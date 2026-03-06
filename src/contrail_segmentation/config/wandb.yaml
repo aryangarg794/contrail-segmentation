@@ -1,0 +1,4 @@
+project: contrail-segmentation 
+save_dir: wandb_logs
+offline: false # keep true for the cluster
+log_model: false

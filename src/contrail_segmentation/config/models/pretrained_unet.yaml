@@ -1,0 +1,7 @@
+model_params:
+  encoder_name: resnet34
+  encoder_weights: imagenet
+  in_channels: 24
+  classes: 1
+
+threshold: 0.5
