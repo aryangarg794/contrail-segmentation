@@ -1,12 +1,18 @@
+import io 
+import matplotlib.pyplot as plt
 import lightning as pl
 import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
 import yaml
+import wandb
 
+from PIL import Image
 from lightning.pytorch.loggers import WandbLogger
+from torchmetrics.segmentation import DiceScore
 from torchvision.ops import sigmoid_focal_loss
-from segmentation_models_pytorch.losses import DiceLoss
+
+from contrail_segmentation.data.plotting import plot_val_examples
 
 class PretrainedUNET(pl.LightningModule):
     
@@ -24,12 +30,18 @@ class PretrainedUNET(pl.LightningModule):
         self.model = smp.Unet(**self.config['model_params'])
         self.threshold = self.config['threshold']
         self.sigmoid = nn.Sigmoid()
-        self.dice = DiceLoss('binary', from_logits='False')
+        self.dice = DiceScore(num_classes=2, input_format='index', include_background=False)
+        self.loss_func = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(100))
+        self.use_focal = self.config['use_focal']
         
     def _forward_pass(self, batch):
         imgs, targets = batch 
         y_hat = self.model(imgs)
-        loss = sigmoid_focal_loss(y_hat, targets, alpha=0.5, reduction="mean")
+        if self.use_focal:
+            loss = sigmoid_focal_loss(y_hat, targets, alpha=0.5, reduction="mean")
+        else:
+            loss = self.loss_func(y_hat, targets)
+        
         return loss
     
     def training_step(self, batch, batch_idx):
@@ -59,9 +71,12 @@ class PretrainedUNET(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        loss = sigmoid_focal_loss(y_hat, targets, alpha=0.5, reduction="mean")
+        if self.use_focal:
+            loss = sigmoid_focal_loss(y_hat, targets, alpha=0.5, reduction="mean")
+        else:
+            loss = self.loss_func(y_hat, targets)
         y_thresh = (self.sigmoid(y_hat) >= self.threshold).float() 
-        dice_loss = self.dice(y_thresh, targets)
+        dice_loss = self.dice(y_thresh.long(), targets.long())
         
         self.log(
             'test/loss', 
@@ -80,6 +95,17 @@ class PretrainedUNET(pl.LightningModule):
         )
         
         return loss 
+    
+    def on_test_epoch_end(self):
+        fig, axes = plot_val_examples(self)
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        img = Image.open(buf)
+        
+        self.logger.experiment.log({'Validation Examples': wandb.Image(img)})
+        plt.close(fig)
+        
     
     def configure_optimizers(self):
         

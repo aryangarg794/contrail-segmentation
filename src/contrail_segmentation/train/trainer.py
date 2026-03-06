@@ -43,7 +43,6 @@ def main(cfg: Config):
     
     timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
     name = cfg.run_name + f'_seed_{timestamp}'
-    print(os.getcwd())
     with open('src/contrail_segmentation/config/wandb.yaml', 'r') as file:
         wandb_dict = yaml.safe_load(file)
         file.close()
