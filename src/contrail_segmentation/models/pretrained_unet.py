@@ -9,10 +9,11 @@ import wandb
 
 from PIL import Image
 from lightning.pytorch.loggers import WandbLogger
-from torchmetrics.segmentation import DiceScore
 from torchvision.ops import sigmoid_focal_loss
+from transformers import get_cosine_schedule_with_warmup
 
 from contrail_segmentation.data.plotting import plot_val_examples
+from contrail_segmentation.train.utils import dice_coef
 
 class PretrainedUNET(pl.LightningModule):
     
@@ -30,22 +31,21 @@ class PretrainedUNET(pl.LightningModule):
         self.model = smp.Unet(**self.config['model_params'])
         self.threshold = self.config['threshold']
         self.sigmoid = nn.Sigmoid()
-        self.dice = DiceScore(num_classes=2, input_format='index', include_background=False)
-        self.loss_func = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(100))
-        self.use_focal = self.config['use_focal']
+        
+        self.bce_loss = smp.losses.SoftBCEWithLogitsLoss(pos_weight=torch.tensor([100.0]))
+        self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         
     def _forward_pass(self, batch):
         imgs, targets = batch 
         y_hat = self.model(imgs)
-        if self.use_focal:
-            loss = sigmoid_focal_loss(y_hat, targets, alpha=0.5, reduction="mean")
-        else:
-            loss = self.loss_func(y_hat, targets)
+        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
+        dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         
-        return loss
+        return loss, dice
     
     def training_step(self, batch, batch_idx):
-        loss = self._forward_pass(batch)
+        loss, dice = self._forward_pass(batch)
+        
         self.log(
             'train/loss', 
             loss, 
@@ -53,17 +53,34 @@ class PretrainedUNET(pl.LightningModule):
             on_epoch=True, 
             prog_bar=True
         )
+        
+        self.log(
+            'train/dice', 
+            dice, 
+            on_step=False, 
+            on_epoch=True, 
+            prog_bar=True
+        )
     
         return loss
     
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss = self._forward_pass(batch)
+        loss, dice = self._forward_pass(batch)
+        
         self.log(
-            'val/loss',
-            loss,  
+            'val/loss', 
+            loss, 
+            on_step=True, 
+            on_epoch=True, 
+            prog_bar=True
+        )
+        
+        self.log(
+            'val/dice', 
+            dice, 
             on_step=False, 
             on_epoch=True, 
-            prog_bar=False
+            prog_bar=True
         )
     
         return loss 
@@ -71,12 +88,9 @@ class PretrainedUNET(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        if self.use_focal:
-            loss = sigmoid_focal_loss(y_hat, targets, alpha=0.5, reduction="mean")
-        else:
-            loss = self.loss_func(y_hat, targets)
-        y_thresh = (self.sigmoid(y_hat) >= self.threshold).float() 
-        dice_loss = self.dice(y_thresh.long(), targets.long())
+        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
+        y_pred = self.sigmoid(y_hat)
+        dice_loss = dice_coef(targets, y_pred, thr=self.threshold)
         
         self.log(
             'test/loss', 
@@ -87,7 +101,7 @@ class PretrainedUNET(pl.LightningModule):
         )
         
         self.log(
-            'test/dice_score', 
+            'test/dice', 
             dice_loss, 
             on_step=False, 
             on_epoch=True, 
@@ -112,4 +126,17 @@ class PretrainedUNET(pl.LightningModule):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.opt_config['lr'],
                                      weight_decay=self.opt_config['weight_decay'], 
                                      betas=(self.opt_config['beta1'], self.opt_config['beta2']))
-        return optimizer
+        
+        total_steps = self.trainer.estimated_stepping_batches
+        num_warmup_steps = int(0.05 * total_steps)
+        scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, 
+                                                    num_training_steps=total_steps)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler, 
+                "interval": "step",    
+                "frequency": 1,         
+            },
+        }
+    

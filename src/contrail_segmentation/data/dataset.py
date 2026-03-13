@@ -12,17 +12,24 @@ class ContrailDataset(Dataset):
     those for this dataset, input becomes (256, 256, 24) or (256, 256, 3) if only mask mode
     """
     
-    def __init__(self, mask_only=False):
+    def __init__(self, mask_only=False, transform=None):
         super().__init__()
         self.df_meta = metadata
         self.mask_only = mask_only
+        self.transform = transform
     
     def __len__(self):
         return len(self.df_meta)
     
     def __getitem__(self, index):
         record_id = self.df_meta.loc[index]['record_id']
-        img = torch.tensor(fake_color_img(record_id, get_mask_frame_only=self.mask_only)).view(256, 256, -1).permute(2, 0, 1).float()
+        img = fake_color_img(record_id, get_mask_frame_only=self.mask_only).reshape(256, 256, -1).astype(np.float32)
+        
+        if self.transform is not None:
+            img = self.transform(img)
+            target = self.transform(target)
+            
+        img = torch.tensor(img).permute(2, 0, 1).float()
         target = torch.tensor(get_mask(record_id)).permute(2, 0, 1).float()
         return img, target
     
