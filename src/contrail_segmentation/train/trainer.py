@@ -2,37 +2,35 @@ import argparse
 import albumentations as A
 import numpy as np 
 import os
+import hydra
 import lightning as pl
 import random
 import segmentation_models_pytorch as smp
 import torch
 import yaml
 
+from hydra.utils import instantiate
+from omegaconf import DictConfig, OmegaConf
 from dataclasses import dataclass
 from datetime import datetime
 from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import WandbLogger 
-from torch.utils.data import DataLoader, Subset
-
+from torch.utils.data import DataLoader, Subset 
 
 from contrail_segmentation.data.dataset import ContrailDataset
 from contrail_segmentation.models.pretrained_unet import PretrainedUNET
 from contrail_segmentation.models.unet import UNET
 from contrail_segmentation.train.utils import find_best_threshold
 
-@dataclass
-class Config:
-    run_name: str 
-    batch_size: int
-    only_mask: bool
-    model_type: str
-    epochs: int 
-    device: str 
-    seed: int
-    transform: bool 
+import warnings
+warnings.filterwarnings("ignore", ".*does not have many workers.*")
+warnings.filterwarnings(
+    "ignore", ".*can be accelerated via the 'torch-scatter' package*"
+)
 
 
-def main(cfg: Config):
+@hydra.main(version_base=None, config_path='../config', config_name='default')
+def main(cfg: DictConfig):
     
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -52,19 +50,13 @@ def main(cfg: Config):
     
     timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
     name = cfg.run_name + f'_seed{cfg.seed}_{timestamp}'
-    with open('src/contrail_segmentation/config/wandb.yaml', 'r') as file:
-        wandb_dict = yaml.safe_load(file)
-        file.close()
     group_name = cfg.run_name + "_" + timestamp    
+    wandb_dict = OmegaConf.to_container(cfg.wandb, resolve=True, throw_on_missing=True)
     logger = WandbLogger(**wandb_dict, name=name, group=group_name)
     
-    match cfg.model_type:
-        case 'pretrained_unet':
-            model = PretrainedUNET()  
-        case 'unet':
-            model = UNET()
+    print(OmegaConf.to_yaml(cfg, resolve=True))
             
-    dataset = ContrailDataset(mask_only=cfg.only_mask)
+    dataset = ContrailDataset(mask_only=cfg.data.mask_only)
     
     indices = np.arange(len(dataset))
     train_size = int(0.8 * len(dataset))
@@ -73,23 +65,24 @@ def main(cfg: Config):
     test_indices = indices[train_size:]
     
     train_set = ContrailDataset(
-        mask_only=cfg.only_mask, 
-        transform=train_transform if cfg.transform else None  
+        mask_only=cfg.data.mask_only, 
+        transform=train_transform if cfg.data.transform else None  
     )
     test_set = ContrailDataset(
-        mask_only=cfg.only_mask    
+        mask_only=cfg.data.mask_only    
     )
     
-    train_loader = DataLoader(Subset(train_set, train_indices), batch_size=cfg.batch_size, generator=generator, 
+    train_loader = DataLoader(Subset(train_set, train_indices), batch_size=cfg.data.batch_size, generator=generator, 
                               shuffle=True, pin_memory=True)
-    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=cfg.batch_size, pin_memory=True)
+    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=cfg.data.batch_size, pin_memory=True)
     
-    accelerator = 'gpu' if cfg.device == 'cuda' else 'cpu'
-    trainer = Trainer(accelerator=accelerator, max_epochs=cfg.epochs, logger=logger, log_every_n_steps=1)
+    model = instantiate(cfg.model)
+    trainer = Trainer(**cfg.trainer, logger=logger)
     trainer.fit(model, train_dataloaders=train_loader)
     
     best_thresh = find_best_threshold(model, test_loader)
     model.threshold = best_thresh
+    model.mask_only = cfg.data.mask_only
     
     test_metrics = trainer.test(model, dataloaders=test_loader)
     
@@ -99,32 +92,7 @@ def main(cfg: Config):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-b', '--batch', type=int, default=32, help='batch size')
-    parser.add_argument('-m', '--model', type=str, default='pretrained_unet', help='model type')
-    parser.add_argument('-r', '--name', type=str, default='pretrained_unet_fake_rgb', help='run name')
-    parser.add_argument('-d', '--device', type=str, default='cuda', help='device')
-    parser.add_argument('-o', '--mask', action='store_true', help='render mode')
-    parser.add_argument('-t', '--trans', action='store_false', help='transform mode')
-    parser.add_argument('-s', '--seed', type=int, default=0, help='seed')
-    
-    with open('src/contrail_segmentation/config/optim/adam.yaml', 'r') as file:
-        opt_config = yaml.safe_load(file)
-        file.close()
-    
-    args = parser.parse_args()
-    config = Config(
-        run_name=args.name, 
-        batch_size=args.batch, 
-        epochs=opt_config['epochs'], 
-        model_type=args.model,
-        device=args.device, 
-        only_mask=args.mask, 
-        seed=args.seed,
-        transform=args.trans
-    )
-    
-    main(config)
+    main()
     
 
      

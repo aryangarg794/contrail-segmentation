@@ -14,7 +14,8 @@ from torchvision.ops import sigmoid_focal_loss
 from transformers import get_cosine_schedule_with_warmup
 from typing import Self, List
 
-from contrail_segmentation.data.plotting import plot_val_examples
+from contrail_segmentation.data.plotting import plot_examples
+from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
 # implementation loosely inspired by https://medium.com/data-science/diffusion-model-from-scratch-in-pytorch-ddpm-9d9760528946
 
@@ -259,7 +260,7 @@ class UNET(pl.LightningModule):
         return loss 
     
     def on_test_epoch_end(self):
-        fig, axes = plot_val_examples(self)
+        fig, axes = plot_examples(self, idxs=TEST_IDXS)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         buf.seek(0)

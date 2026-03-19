@@ -1,0 +1,3 @@
+batch_size: 32
+mask_only: true
+transform: true

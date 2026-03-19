@@ -1,0 +1,11 @@
+defaults:
+- data: data
+- model: pretrained_unet
+- trainer: train
+- wandb: wandb
+- _self_
+
+run_name: pretrained_unet_fake_rgb
+seed: 0
+job_type: train
+device: cuda

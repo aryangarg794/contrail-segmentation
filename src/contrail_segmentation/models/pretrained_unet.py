@@ -12,27 +12,34 @@ from lightning.pytorch.loggers import WandbLogger
 from torchvision.ops import sigmoid_focal_loss
 from transformers import get_cosine_schedule_with_warmup
 
-from contrail_segmentation.data.plotting import plot_val_examples
+from contrail_segmentation.data.plotting import plot_examples
+from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
 
 class PretrainedUNET(pl.LightningModule):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self, 
+        encoder_class: nn.Module, 
+        threshold: float = 0.5, 
+        lr: float = 1e-3, 
+        wd: float = 1e-3, 
+        beta1: float = 0.9, 
+        beta2: float = 0.999, 
+        *args, 
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
+    
+        self.lr = lr
+        self.wd = wd
+        self.betas = (beta1, beta2)
         
-        with open('src/contrail_segmentation/config/models/pretrained_unet.yaml', 'r') as file:
-            self.config = yaml.safe_load(file)
-            file.close()
-            
-        with open('src/contrail_segmentation/config/optim/adam.yaml', 'r') as file:
-            self.opt_config = yaml.safe_load(file)
-            file.close()
-            
-        self.model = smp.Unet(**self.config['model_params'])
-        self.threshold = self.config['threshold']
+        self.model = encoder_class()
+        self.threshold = threshold
         self.sigmoid = nn.Sigmoid()
         
-        self.bce_loss = smp.losses.SoftBCEWithLogitsLoss(pos_weight=torch.tensor([100.0]))
+        self.bce_loss = smp.losses.FocalLoss(mode='binary')
         self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         
     def _forward_pass(self, batch):
@@ -111,7 +118,7 @@ class PretrainedUNET(pl.LightningModule):
         return loss 
     
     def on_test_epoch_end(self):
-        fig, axes = plot_val_examples(self)
+        fig, axes = plot_examples(self, idxs=TEST_IDXS, mask_only=self.mask_only)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         buf.seek(0)
@@ -123,9 +130,9 @@ class PretrainedUNET(pl.LightningModule):
     
     def configure_optimizers(self):
         
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.opt_config['lr'],
-                                     weight_decay=self.opt_config['weight_decay'], 
-                                     betas=(self.opt_config['beta1'], self.opt_config['beta2']))
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                     weight_decay=self.wd, 
+                                     betas=self.betas)
         
         total_steps = self.trainer.estimated_stepping_batches
         num_warmup_steps = int(0.05 * total_steps)
