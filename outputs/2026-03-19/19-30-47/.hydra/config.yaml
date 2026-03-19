@@ -1,0 +1,32 @@
+data:
+  batch_size: 32
+  mask_only: false
+  transform: true
+model:
+  _target_: contrail_segmentation.models.pretrained_unet.PretrainedUNET
+  lr: 0.0001
+  wd: 0.001
+  beta1: 0.9
+  beta2: 0.999
+  threshold: 0.5
+  encoder_class:
+    _partial_: true
+    _target_: segmentation_models_pytorch.Unet
+    encoder_name: resnet50
+    encoder_weights: ssl
+    in_channels: 24
+    classes: 1
+trainer:
+  max_epochs: 100
+  accelerator: gpu
+  devices: auto
+  log_every_n_steps: 1
+wandb:
+  project: contrail-segmentation
+  save_dir: wandb_logs
+  offline: false
+  log_model: false
+run_name: pretrained_unet_mask
+seed: 0
+job_type: train
+device: cuda

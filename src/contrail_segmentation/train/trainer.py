@@ -44,8 +44,16 @@ def main(cfg: DictConfig):
     generator = torch.Generator().manual_seed(cfg.seed)
     
     train_transform = A.Compose([
-        A.HorizontalFlip(p=0.4),
-        A.RandomResizedCrop(size=(256, 256), scale=(0.75, 1.0), p=0.4)
+        A.ShiftScaleRotate(
+            scale_limit=0.2,
+            rotate_limit=180,
+            shift_limit=0.3,
+            border_mode=0,
+            value=0,
+            p=0.5,
+        ),
+        A.HorizontalFlip(), 
+        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.3, p=0.5),
     ])
     
     timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")

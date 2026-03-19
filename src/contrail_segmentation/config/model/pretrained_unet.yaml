@@ -11,5 +11,5 @@ encoder_class:
   _target_: segmentation_models_pytorch.Unet
   encoder_name: resnet50
   encoder_weights: ssl
-  in_channels: 3
+  in_channels: 24
   classes: 1
