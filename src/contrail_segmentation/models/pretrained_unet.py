@@ -10,11 +10,13 @@ import wandb
 from PIL import Image
 from lightning.pytorch.loggers import WandbLogger
 from torchvision.ops import sigmoid_focal_loss
+from segmentation_models_pytorch.metrics import get_stats, iou_score, f1_score
 from transformers import get_cosine_with_min_lr_schedule_with_warmup
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
+from contrail_segmentation.models.utils import compute_metrics
 
 class PretrainedUNET(pl.LightningModule):
     
@@ -47,11 +49,13 @@ class PretrainedUNET(pl.LightningModule):
         y_hat = self.model(imgs)
         loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
+        metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
+        metrics['dice'] = dice
         
-        return loss, dice
+        return loss, metrics
     
     def training_step(self, batch, batch_idx):
-        loss, dice = self._forward_pass(batch)
+        loss, metrics = self._forward_pass(batch)
         
         self.log(
             'train/loss', 
@@ -61,18 +65,21 @@ class PretrainedUNET(pl.LightningModule):
             prog_bar=True
         )
         
-        self.log(
-            'train/dice', 
-            dice, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=True
-        )
+        
+        for metric, value in metrics.items():
+            self.log(
+                f'train/{metric}', 
+                value, 
+                on_step=False, 
+                on_epoch=True, 
+                prog_bar=True
+            )
+        
     
         return loss
     
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, dice = self._forward_pass(batch)
+        loss, metrics = self._forward_pass(batch)
         
         self.log(
             'val/loss', 
@@ -82,13 +89,14 @@ class PretrainedUNET(pl.LightningModule):
             prog_bar=True
         )
         
-        self.log(
-            'val/dice', 
-            dice, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=True
-        )
+        for metric, value in metrics.items():
+            self.log(
+                f'val/{metric}', 
+                value, 
+                on_step=False, 
+                on_epoch=True, 
+                prog_bar=True
+            )
     
         return loss 
     
@@ -98,6 +106,8 @@ class PretrainedUNET(pl.LightningModule):
         loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
         y_pred = self.sigmoid(y_hat)
         dice_loss = dice_coef(targets, y_pred, thr=self.threshold)
+        metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
+        metrics['dice'] = dice_loss
         
         self.log(
             'test/loss', 
@@ -107,13 +117,14 @@ class PretrainedUNET(pl.LightningModule):
             prog_bar=False
         )
         
-        self.log(
-            'test/dice', 
-            dice_loss, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=False
-        )
+        for metric, value in metrics.items():
+            self.log(
+                f'train/{metric}', 
+                value, 
+                on_step=False, 
+                on_epoch=True, 
+                prog_bar=True
+            )
         
         return loss 
     

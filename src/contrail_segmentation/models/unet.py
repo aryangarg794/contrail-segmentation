@@ -17,6 +17,7 @@ from typing import Self, List
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
+from contrail_segmentation.models.utils import compute_metrics
 # implementation loosely inspired by https://medium.com/data-science/diffusion-model-from-scratch-in-pytorch-ddpm-9d9760528946
 
 class Sinusoidal(nn.Module):
@@ -197,11 +198,13 @@ class UNET(pl.LightningModule):
         y_hat = self.model(imgs)
         loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
+        metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
+        metrics['dice'] = dice
         
-        return loss, dice
+        return loss, metrics
     
     def training_step(self, batch, batch_idx):
-        loss, dice = self._forward_pass(batch)
+        loss, metrics = self._forward_pass(batch)
         
         self.log(
             'train/loss', 
@@ -211,18 +214,21 @@ class UNET(pl.LightningModule):
             prog_bar=True
         )
         
-        self.log(
-            'train/dice', 
-            dice, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=True
-        )
+        
+        for metric, value in metrics.items():
+            self.log(
+                f'train/{metric}', 
+                value, 
+                on_step=False, 
+                on_epoch=True, 
+                prog_bar=True
+            )
+        
     
         return loss
     
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, dice = self._forward_pass(batch)
+        loss, metrics = self._forward_pass(batch)
         
         self.log(
             'val/loss', 
@@ -232,13 +238,14 @@ class UNET(pl.LightningModule):
             prog_bar=True
         )
         
-        self.log(
-            'val/dice', 
-            dice, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=True
-        )
+        for metric, value in metrics.items():
+            self.log(
+                f'val/{metric}', 
+                value, 
+                on_step=False, 
+                on_epoch=True, 
+                prog_bar=True
+            )
     
         return loss 
     
@@ -248,6 +255,8 @@ class UNET(pl.LightningModule):
         loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
         y_pred = self.sigmoid(y_hat)
         dice_loss = dice_coef(targets, y_pred, thr=self.threshold)
+        metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
+        metrics['dice'] = dice_loss
         
         self.log(
             'test/loss', 
@@ -257,13 +266,14 @@ class UNET(pl.LightningModule):
             prog_bar=False
         )
         
-        self.log(
-            'test/dice', 
-            dice_loss, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=False
-        )
+        for metric, value in metrics.items():
+            self.log(
+                f'train/{metric}', 
+                value, 
+                on_step=False, 
+                on_epoch=True, 
+                prog_bar=True
+            )
         
         return loss 
     
