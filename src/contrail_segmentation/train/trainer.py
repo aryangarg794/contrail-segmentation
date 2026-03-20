@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import WandbLogger 
+from lightning.pytorch.callbacks import EarlyStopping
 from torch.utils.data import DataLoader, Subset 
 
 from contrail_segmentation.data.dataset import ContrailDataset
@@ -47,14 +48,14 @@ def main(cfg: DictConfig):
     train_transform = A.Compose([
         A.ShiftScaleRotate(
             scale_limit=0.2,
-            rotate_limit=180,
+            rotate_limit=0,
             shift_limit=0.3,
             border_mode=0,
             value=0,
-            p=0.8,
+            p=0.5,
         ),
         A.RandomResizedCrop(size=(256, 256), scale=(0.75, 1.0), p=0.8), 
-        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.3, p=0.8),
+        A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.2, p=0.5),
     ])
     
     timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
@@ -69,27 +70,59 @@ def main(cfg: DictConfig):
     dataset = ContrailDataset(mask_only=cfg.data.mask_only)
     
     indices = np.arange(len(dataset))
-    train_size = int(0.8 * len(dataset))
     np.random.shuffle(indices)
-    train_indices = indices[:train_size]
-    test_indices = indices[train_size:]
-    
+
+    n = len(indices)
+
+    train_end = int(0.8 * n)
+    val_end = int(0.85 * n)  # 0.8 + 0.05
+
+    train_indices = indices[:train_end]
+    val_indices = indices[train_end:val_end]
+    test_indices = indices[val_end:]
+
     train_set = ContrailDataset(
-        mask_only=cfg.data.mask_only, 
-        transform=train_transform if cfg.data.transform else None  
+        mask_only=cfg.data.mask_only,
+        y_fix=cfg.data.y_fix,
+        transform=train_transform if cfg.data.transform else None
     )
+
+    val_set = ContrailDataset(
+        mask_only=cfg.data.mask_only,
+        y_fix=cfg.data.y_fix,
+    )
+
     test_set = ContrailDataset(
-        mask_only=cfg.data.mask_only    
+        mask_only=cfg.data.mask_only,
+        y_fix=cfg.data.y_fix,
     )
-    
-    train_loader = DataLoader(Subset(train_set, train_indices), batch_size=cfg.data.batch_size, generator=generator, 
-                              shuffle=True, pin_memory=True)
-    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=64, pin_memory=True)
+
+    train_loader = DataLoader(
+        Subset(train_set, train_indices),
+        batch_size=cfg.data.batch_size,
+        generator=generator,
+        shuffle=True,
+        pin_memory=True
+    )
+
+    val_loader = DataLoader(
+        Subset(val_set, val_indices),
+        batch_size=64,
+        shuffle=False,
+        pin_memory=True
+    )
+
+    test_loader = DataLoader(
+        Subset(test_set, test_indices),
+        batch_size=64,
+        shuffle=False,
+        pin_memory=True
+    )
     
     model = instantiate(cfg.model)
     # model = torch.compile(model)
-    trainer = Trainer(**cfg.trainer, logger=logger)
-    trainer.fit(model, train_dataloaders=train_loader)
+    trainer = Trainer(**cfg.trainer, logger=logger, callbacks=EarlyStopping('val/dice'))
+    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
     
     best_thresh = find_best_threshold(model, test_loader)
     model.threshold = best_thresh

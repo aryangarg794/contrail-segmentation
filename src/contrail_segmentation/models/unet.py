@@ -178,6 +178,8 @@ class UNET(pl.LightningModule):
         wd: float = 1e-3, 
         beta1: float = 0.9, 
         beta2: float = 0.999,
+        dice_weight: float = 0.5, 
+        focal_weight: float = 0.5,
         *args, 
         **kwargs
     ):
@@ -192,11 +194,17 @@ class UNET(pl.LightningModule):
         self.sigmoid = nn.Sigmoid()
         self.bce_loss = smp.losses.FocalLoss(mode='binary')
         self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
+        self.dice_weight = dice_weight
+        self.focal_weight = focal_weight
+        
+    def _loss(self, preds, targets):
+        return self.dice_weight * self.dice_loss(preds, targets) + \
+            self.focal_weight * self.bce_loss(preds, targets)  
         
     def _forward_pass(self, batch):
         imgs, targets = batch 
         y_hat = self.model(imgs)
-        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
+        loss = self._loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
         metrics['dice'] = dice
@@ -220,7 +228,7 @@ class UNET(pl.LightningModule):
                 f'train/{metric}', 
                 value, 
                 on_step=False, 
-                on_epoch=True, 
+                on_epoch=True if metric == 'dice' else False, 
                 prog_bar=True
             )
         
@@ -306,3 +314,4 @@ class UNET(pl.LightningModule):
                 "frequency": 1,         
             },
         }
+    
