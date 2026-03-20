@@ -8,39 +8,31 @@ import yaml
 import wandb
 
 from PIL import Image
-from lightning.pytorch.loggers import WandbLogger
-from torchvision.ops import sigmoid_focal_loss
-from transformers import get_cosine_with_min_lr_schedule_with_warmup
-
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
+from transformers import get_cosine_with_min_lr_schedule_with_warmup
 
-class PretrainedUNET(pl.LightningModule):
+class Dummy(pl.LightningModule):
     
     def __init__(
-        self, 
-        encoder_class: nn.Module, 
-        threshold: float = 0.5, 
-        lr: float = 1e-3, 
-        wd: float = 1e-3, 
-        beta1: float = 0.9, 
-        beta2: float = 0.999, 
+        self,
+        ones: bool = False,  
         *args, 
         **kwargs
     ):
         super().__init__(*args, **kwargs)
-    
-        self.lr = lr
-        self.wd = wd
-        self.betas = (beta1, beta2)
+        self.ones = ones
         
-        self.model = encoder_class()
-        self.threshold = threshold
-        self.sigmoid = nn.Sigmoid()
-        
+        self.dummy_param = nn.Parameter(torch.empty(0))
         self.bce_loss = smp.losses.FocalLoss(mode='binary')
         self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
+        self.threshold = 0.5
+        self.sigmoid = nn.Sigmoid()
+        
+    def model(self, x):
+        shape = (x.size(0), 1, x.size(2), x.size(3))
+        return torch.ones(shape, device=x.device) if self.ones else torch.zeros(shape, device=x.device)
         
     def _forward_pass(self, batch):
         imgs, targets = batch 
@@ -49,6 +41,7 @@ class PretrainedUNET(pl.LightningModule):
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         
         return loss, dice
+    
     
     def training_step(self, batch, batch_idx):
         loss, dice = self._forward_pass(batch)
@@ -127,23 +120,10 @@ class PretrainedUNET(pl.LightningModule):
         self.logger.experiment.log({'Validation Examples': wandb.Image(img)})
         plt.close(fig)
         
-    
+        
     def configure_optimizers(self):
-        
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
-                                     weight_decay=self.wd, 
-                                     betas=self.betas)
-        
-        total_steps = self.trainer.estimated_stepping_batches
-        num_warmup_steps = int(0.05 * total_steps)
-        scheduler = get_cosine_with_min_lr_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, 
-                                                    num_training_steps=total_steps, min_lr=5e-6)
+        # redundant
+        optimizer = torch.optim.Adam(self.parameters())
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler, 
-                "interval": "step",    
-                "frequency": 1,         
-            },
         }
-    

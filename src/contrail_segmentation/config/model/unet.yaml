@@ -1,15 +1,11 @@
-_target_: contrail_segmentation.models.pretrained_unet.PretrainedUNET
+_target_: contrail_segmentation.models.unet.UNET
 
-lr: 1e-4 
+lr: 3e-4 
 wd: 1e-3
 beta1: 0.9
 beta2: 0.999
 threshold: 0.5
 
-encoder_class:
-  _partial_: True
-  _target_: segmentation_models_pytorch.Unet
-  encoder_name: resnet50
-  encoder_weights: ssl
-  in_channels: 24
-  classes: 1
+in_channels: 24
+out_channels: 1
+enc_channels: [32, 64, 128, 128, 256]

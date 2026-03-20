@@ -1,0 +1,3 @@
+_target_: contrail_segmentation.models.dummy.Dummy
+
+ones: false

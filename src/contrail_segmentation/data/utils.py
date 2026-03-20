@@ -39,4 +39,13 @@ def fake_color_img(idx, parent_folder = DATA_DIR, get_mask_frame_only=False):
     false_color = np.clip(np.stack([r, g, b], axis=2), 0, 1)
     return false_color
 
+
+def create_grid(nc: int, offset=0.5):
+    grid = np.zeros((nc, nc, 2), dtype=np.float32)
+    for ix in range(nc):
+        for iy in range(nc):
+            grid[ix, iy, 1] = -1 + 2 * (ix + 0.5) / nc + offset / 128
+            grid[ix, iy, 0] = -1 + 2 * (iy + 0.5) / nc + offset / 128
+    return grid
+
 TEST_IDXS = [1228, 947, 1376, 1340, 826]

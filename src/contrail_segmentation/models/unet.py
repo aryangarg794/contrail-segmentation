@@ -11,7 +11,7 @@ import wandb
 from PIL import Image
 from torch import Tensor
 from torchvision.ops import sigmoid_focal_loss
-from transformers import get_cosine_schedule_with_warmup
+from transformers import get_cosine_with_min_lr_schedule_with_warmup
 from typing import Self, List
 
 from contrail_segmentation.data.plotting import plot_examples
@@ -48,16 +48,13 @@ class ResidualBlock(nn.Module):
     def __init__(
         self: Self,
         in_channels: int,
-        horizon: int = 1000, 
         dropout: float = 0.1, 
         activation: nn.Module = nn.ReLU,
-        groups: int = 32,
         *args, 
         **kwargs
     ) -> None:
         super(ResidualBlock, self).__init__(*args, **kwargs)
         
-        self.sinusoidal = Sinusoidal(in_channels, horizon)
         
         self.layers = nn.Sequential(
             nn.BatchNorm2d(in_channels),
@@ -69,9 +66,7 @@ class ResidualBlock(nn.Module):
             nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, padding=1)
         )
         
-    def forward(self: Self, x: Tensor, t: int, embed: bool) -> Tensor:
-        if embed: 
-            x = x + self.sinusoidal(t)
+    def forward(self: Self, x: Tensor) -> Tensor:
         return self.layers(x) + x * 1/np.sqrt(2)
     
     
@@ -110,54 +105,63 @@ class UNETLayer(nn.Module):
                 batch_first=True
             )
         
-    def forward(self: Self, x: Tensor, t: int) -> None: 
-        x = self.resblock1(x, t, True)
+    def forward(self: Self, x: Tensor) -> None: 
+        x = self.resblock1(x)
         if self.attention:
             batch_size, channels, height, width = x.shape
             x = x.view(batch_size, channels, -1).transpose(1, 2) # attention on patches
             x, _ = self.attention_layer(x, x, x)
             x = x.transpose(1, 2).view(batch_size, channels, height, width)
     
-        x = self.resblock2(x, t, False)
+        x = self.resblock2(x)
         return self.conv(x), x
     
     
 class UNETBase(nn.Module):
-    
     def __init__(
-        self: Self,
-        in_channels: int = 3, 
-        channels: List = list([64, 128, 256, 512, 512, 384, 192]),
-        *args, 
+        self,
+        in_channels: int = 3,
+        out_channels: int = 1,
+        enc_channels: List[int] = [32, 64, 128, 256, 512],
+        *args,
         **kwargs
     ) -> None:
-        super(UNETBase, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
+    
+        self.init_conv = nn.Conv2d(in_channels, enc_channels[0], kernel_size=3, padding=1)
+    
+        self.enc1 = UNETLayer(enc_channels[0], enc_channels[1], upsample=False)
+        self.enc2 = UNETLayer(enc_channels[1], enc_channels[2], upsample=False)
+        self.enc3 = UNETLayer(enc_channels[2], enc_channels[3], upsample=False, attention=False)
+        self.enc4 = UNETLayer(enc_channels[3], enc_channels[4], upsample=False, attention=False)
         
-        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, padding=1)
-        self.layer1 = UNETLayer(in_channels=64, out_channels=128) # 64 -> 128 
-        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True) # 128 -> 256
-        self.layer3 = UNETLayer(in_channels=256, out_channels=512) # 256 -> 512
-        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 256
-        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 384
-        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True) # 384 -> 192 
+        self.up1 = UNETLayer(enc_channels[4], enc_channels[3], upsample=True, attention=False)
+        self.up2 = UNETLayer(enc_channels[3] * 2, enc_channels[2], upsample=True, attention=False)
+        self.up3 = UNETLayer(enc_channels[2] * 2, enc_channels[1], upsample=True)
+        self.up4 = UNETLayer(enc_channels[1] * 2, enc_channels[0], upsample=True)
         
-        self.conv2 = nn.Conv2d(in_channels=channels[6], out_channels=channels[6]//2, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=in_channels, kernel_size=1)
-        self.relu = nn.ReLU()
-        
-    def forward(self: Self, x: Tensor, t: int) -> Tensor:
-        x = self.conv1(x)
-        x, x1 = self.layer1(x, t)
-        x, x2 = self.layer2(x, t)
-        x, x3 = self.layer3(x, t)
+        final_in = enc_channels[0] * 2
+        self.conv_final = nn.Sequential(
+            nn.Conv2d(final_in, enc_channels[0], kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(enc_channels[0], out_channels, kernel_size=1),
+            # nn.Conv2d(1, 1, kernel_size=2, padding=1, bias=False), # to fix the 0.5 shift            
+        )
 
-        x, _ = self.layer4(x, t)
-        x, _ = self.layer5(torch.cat([x3, x], dim=1), t)
-        x, _ = self.layer6(torch.cat([x2, x], dim=1), t)
-        x = self.conv2(torch.cat([x1, x], dim=1))
-        x = self.relu(x)
-        x = self.conv3(x)
+    def forward(self, x: Tensor) -> Tensor:
+        s0 = self.init_conv(x) # channels[0]          
+        x, s1 = self.enc1(s0)  # channels[1], channels[0]
+        x, s2 = self.enc2(x) # channels[2], channels[1]          
+        x, s3 = self.enc3(x) # channels[3], channels[2]      
+        x, s4 = self.enc4(x) # channels[4], channels[3]     
         
+        x, _ = self.up1(x) # channels[3]    
+        # print(x.shape, s4.shape, s3.shape, s2.shape, s1.shape, s0.shape)         
+        x, _ = self.up2(torch.cat([x, s4], dim=1)) # channels[2]
+        x, _ = self.up3(torch.cat([x, s3], dim=1)) # channels[1]
+        x, _ = self.up4(torch.cat([x, s2], dim=1)) # channels[0]
+        
+        x = self.conv_final(torch.cat([x, s0], dim=1)) 
         return x
 
         
@@ -165,23 +169,27 @@ class UNET(pl.LightningModule):
     
     def __init__(
         self, 
+        threshold: float = 0.5,
+        in_channels: int = 24,
+        out_channels: int = 1,
+        enc_channels: List[int] = [32, 64, 128, 256],
+        lr: float = 1e-3, 
+        wd: float = 1e-3, 
+        beta1: float = 0.9, 
+        beta2: float = 0.999,
         *args, 
         **kwargs
     ):
         super().__init__(*args, **kwargs)
         
-        with open('src/contrail_segmentation/config/models/unet.yaml', 'r') as file:
-            self.config = yaml.safe_load(file)
-            file.close()
+        self.lr = lr
+        self.wd = wd
+        self.betas = (beta1, beta2)
             
-        with open('src/contrail_segmentation/config/optim/adam.yaml', 'r') as file:
-            self.opt_config = yaml.safe_load(file)
-            file.close()
-            
-        self.model = UNETBase(**self.config['model_params'])
-        self.threshold = self.config['threshold']
+        self.model = UNETBase(in_channels=in_channels, out_channels=out_channels, enc_channels=enc_channels)
+        self.threshold = threshold
         self.sigmoid = nn.Sigmoid()
-        self.bce_loss = smp.losses.SoftBCEWithLogitsLoss(pos_weight=torch.tensor([100.0]))
+        self.bce_loss = smp.losses.FocalLoss(mode='binary')
         self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         
     def _forward_pass(self, batch):
@@ -260,7 +268,7 @@ class UNET(pl.LightningModule):
         return loss 
     
     def on_test_epoch_end(self):
-        fig, axes = plot_examples(self, idxs=TEST_IDXS)
+        fig, axes = plot_examples(self, idxs=TEST_IDXS, mask_only=self.mask_only)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         buf.seek(0)
@@ -272,14 +280,14 @@ class UNET(pl.LightningModule):
     
     def configure_optimizers(self):
         
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.opt_config['lr'],
-                                     weight_decay=self.opt_config['weight_decay'], 
-                                     betas=(self.opt_config['beta1'], self.opt_config['beta2']))
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+                                     weight_decay=self.wd, 
+                                     betas=self.betas)
         
         total_steps = self.trainer.estimated_stepping_batches
         num_warmup_steps = int(0.05 * total_steps)
-        scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, 
-                                                    num_training_steps=total_steps)
+        scheduler = get_cosine_with_min_lr_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, 
+                                                    num_training_steps=total_steps, min_lr=5e-6)
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

@@ -2,6 +2,7 @@ import argparse
 import albumentations as A
 import numpy as np 
 import os
+import wandb
 import hydra
 import lightning as pl
 import random
@@ -50,17 +51,18 @@ def main(cfg: DictConfig):
             shift_limit=0.3,
             border_mode=0,
             value=0,
-            p=0.5,
+            p=0.8,
         ),
-        A.HorizontalFlip(), 
-        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.3, p=0.5),
+        A.RandomResizedCrop(size=(256, 256), scale=(0.75, 1.0), p=0.8), 
+        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.3, p=0.8),
     ])
     
     timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
     name = cfg.run_name + f'_seed{cfg.seed}_{timestamp}'
     group_name = cfg.run_name + "_" + timestamp    
     wandb_dict = OmegaConf.to_container(cfg.wandb, resolve=True, throw_on_missing=True)
-    logger = WandbLogger(**wandb_dict, name=name, group=group_name)
+    config_dict = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+    logger = WandbLogger(**wandb_dict, name=name, group=group_name, config=config_dict)
     
     print(OmegaConf.to_yaml(cfg, resolve=True))
             
@@ -82,9 +84,10 @@ def main(cfg: DictConfig):
     
     train_loader = DataLoader(Subset(train_set, train_indices), batch_size=cfg.data.batch_size, generator=generator, 
                               shuffle=True, pin_memory=True)
-    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=cfg.data.batch_size, pin_memory=True)
+    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=64, pin_memory=True)
     
     model = instantiate(cfg.model)
+    # model = torch.compile(model)
     trainer = Trainer(**cfg.trainer, logger=logger)
     trainer.fit(model, train_dataloaders=train_loader)
     
@@ -95,6 +98,7 @@ def main(cfg: DictConfig):
     test_metrics = trainer.test(model, dataloaders=test_loader)
     
     torch.cuda.empty_cache()
+    wandb.finish()
     
     return test_metrics
 
