@@ -1,8 +1,11 @@
 
 ------------------------
 ## Data
-Download the validation set from: https://www.kaggle.com/competitions/google-research-identify-contrails-reduce-global-warming/
-Rename the metadata to `train_metadata`
+The data downloading is much simpler now: just make sure to add your kaggle api key ([linux](https://github.com/Kaggle/kaggle-cli/blob/main/docs/README.md)) or json ([windows](https://www.kaggle.com/discussions/getting-started/524433), use the legacy api thing). Then just run: 
+
+```bash
+uv run download-data
+```
 
 -----------------------
 ## Setup and Training

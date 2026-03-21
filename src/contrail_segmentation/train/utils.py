@@ -29,8 +29,8 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda'):
     all_targets = []
     for batch in dataloader:
         imgs, target = batch
-        imgs.to(device)
-        target.to(device)
+        imgs = imgs.to(device)
+        targets = target.to(device)
         
         logits = model.model(imgs)
         all_preds.append(logits.detach().cpu())
@@ -51,8 +51,10 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda'):
     best = -1
     best_thr = None
     interval = 1.00 / num_vals
+    
+    thresholds = np.linspace(0, 1, num_vals)
     with progress_bar as p:
-        for thr in np.arange(0, 1 + interval, interval):
+        for thr in thresholds:
             dice = dice_coef(targets, preds, thr)
             if dice > best:
                 best = dice

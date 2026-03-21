@@ -1,23 +1,36 @@
 import os
 import numpy as np
 import pandas as pd
+import cv2
 
 DATA_DIR = 'data/train'
-META_PATH = 'data/train_metadata.json'
+META_PATH = 'data/train_metadata.csv'
+
+# from https://github.com/divideconcept/fastnumpyio
+def load(file):
+    file=open(file,"rb")
+    header = file.read(128)
+    descr = str(header[19:25], 'utf-8').replace("'","").replace(" ","")
+    shape = tuple(int(num) for num in str(header[60:120], 'utf-8').replace(', }', '').replace('(', '').replace(')', '').split(','))
+    datasize = np.lib.format.descr_to_dtype(descr).itemsize
+    for dimension in shape:
+        datasize *= dimension
+    return np.ndarray(shape, dtype=descr, buffer=file.read(datasize))
+
 
 def get_band_images(idx: str, parent_folder: str, band: str):
     idx = str(idx)
-    return np.load(os.path.join(parent_folder, idx, f'band_{band}.npy'))
+    return load(os.path.join(parent_folder, idx, f'band_{band}.npy'))
 
 def get_mask(idx: str, parent_folder: str = DATA_DIR):
     idx = str(idx)
-    return np.load(os.path.join(parent_folder, idx, f'human_pixel_masks.npy'))
+    return load(os.path.join(parent_folder, idx, f'human_pixel_masks.npy'))
 
 _T11_BOUNDS = (243, 303)
 _CLOUD_TOP_TDIFF_BOUNDS = (-4, 5)
 _TDIFF_BOUNDS = (-4, 2)
 
-metadata = pd.read_json(META_PATH)
+metadata = pd.read_csv(META_PATH)
 
 def normalize_range(data, bounds):
     return (data - bounds[0]) / (bounds[1] - bounds[0])
@@ -40,12 +53,18 @@ def fake_color_img(idx, parent_folder = DATA_DIR, get_mask_frame_only=False):
     return false_color
 
 
-def create_grid(nc: int, offset=0.5):
-    grid = np.zeros((nc, nc, 2), dtype=np.float32)
-    for ix in range(nc):
-        for iy in range(nc):
-            grid[ix, iy, 1] = -1 + 2 * (ix + 0.5) / nc + offset / 128
-            grid[ix, iy, 0] = -1 + 2 * (iy + 0.5) / nc + offset / 128
-    return grid
+def shift(img):
+    shift_matrix = np.array([[1.0, 0.0, 0.5], [0.0, 1.0, 0.5]], dtype=np.float32)
+
+    # Apply the affine transformation using cv2.warpAffine
+    shifted_img = cv2.warpAffine(
+        img,
+        shift_matrix,
+        (img.shape[1], img.shape[0]), # Keep the same size
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
+    return shifted_img.astype(img.dtype)
 
 TEST_IDXS = [1228, 947, 1376, 1340, 826]

@@ -12,6 +12,7 @@ from lightning.pytorch.loggers import WandbLogger
 from torchvision.ops import sigmoid_focal_loss
 from segmentation_models_pytorch.metrics import get_stats, iou_score, f1_score
 from transformers import get_cosine_with_min_lr_schedule_with_warmup
+from segmentation_models_pytorch.encoders import get_preprocessing_fn
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
@@ -30,6 +31,7 @@ class PretrainedUNET(pl.LightningModule):
         beta2: float = 0.999, 
         dice_weight: float = 0.5, 
         focal_weight: float = 0.5,
+        mask_only: bool = False, 
         *args, 
         **kwargs
     ):
@@ -40,17 +42,20 @@ class PretrainedUNET(pl.LightningModule):
         self.betas = (beta1, beta2)
         
         self.model = encoder_class()
+        self.encoder_name = encoder_class.keywords.get("encoder_name")
+        self.encoder_weights = encoder_class.keywords.get("encoder_weights")
+        
         self.threshold = threshold
         self.sigmoid = nn.Sigmoid()
         
-        self.bce_loss = smp.losses.FocalLoss(mode='binary')
+        self.bce_loss = smp.losses.FocalLoss(mode='binary', gamma=2.25, alpha=0.01)
         self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         self.dice_weight = dice_weight
         self.focal_weight = focal_weight
         
     def _loss(self, preds, targets):
         return self.dice_weight * self.dice_loss(preds, targets) + \
-            self.focal_weight * self.bce_loss(preds, targets)  
+            self.focal_weight * self.bce_loss(preds, targets)              
         
     def _forward_pass(self, batch):
         imgs, targets = batch 
@@ -128,7 +133,7 @@ class PretrainedUNET(pl.LightningModule):
         
         for metric, value in metrics.items():
             self.log(
-                f'train/{metric}', 
+                f'test/{metric}', 
                 value, 
                 on_step=False, 
                 on_epoch=True, 
@@ -150,7 +155,7 @@ class PretrainedUNET(pl.LightningModule):
     
     def configure_optimizers(self):
         
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr,
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr,
                                      weight_decay=self.wd, 
                                      betas=self.betas)
         
