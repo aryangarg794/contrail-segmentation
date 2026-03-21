@@ -9,7 +9,7 @@ import random
 import segmentation_models_pytorch as smp
 import torch
 import yaml
-
+from sklearn.model_selection import train_test_split
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from dataclasses import dataclass
@@ -23,13 +23,13 @@ from contrail_segmentation.data.dataset import ContrailDataset
 from contrail_segmentation.models.pretrained_unet import PretrainedUNET
 from contrail_segmentation.models.unet import UNET
 from contrail_segmentation.train.utils import find_best_threshold
+from contrail_segmentation.data.utils import metadata
 
 import warnings
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
 warnings.filterwarnings(
     "ignore", ".*can be accelerated via the 'torch-scatter' package*"
 )
-
 
 @hydra.main(version_base=None, config_path='../config', config_name='default')
 def main(cfg: DictConfig):
@@ -64,67 +64,72 @@ def main(cfg: DictConfig):
     wandb_dict = OmegaConf.to_container(cfg.wandb, resolve=True, throw_on_missing=True)
     config_dict = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     logger = WandbLogger(**wandb_dict, name=name, group=group_name, config=config_dict)
-    
-    print(OmegaConf.to_yaml(cfg, resolve=True))
+
+    indices = np.arange(len(metadata))
+    labels = metadata['label'].values
+
+    train_idx, temp_idx, _, temp_labels = train_test_split(
+        indices, 
+        labels, 
+        test_size=0.25, 
+        random_state=cfg.seed, 
+        stratify=labels
+    )
+
+    val_idx, test_idx, _, _ = train_test_split(
+        temp_idx, 
+        temp_labels, 
+        test_size=0.6, 
+        random_state=cfg.seed, 
+        stratify=temp_labels
+    )
             
-    dataset = ContrailDataset(mask_only=cfg.data.mask_only)
-    
-    indices = np.arange(len(dataset))
-    np.random.shuffle(indices)
-
-    n = len(indices)
-
-    train_end = int(0.75 * n)
-    val_end = int(0.85 * n)  # 0.8 + 0.05
-
-    train_indices = indices[:train_end]
-    val_indices = indices[train_end:val_end]
-    test_indices = indices[val_end:]
-
-    train_set = ContrailDataset(
+    train_set_base = ContrailDataset(
         mask_only=cfg.data.mask_only,
         y_fix=cfg.data.y_fix,
         transform=train_transform if cfg.data.transform else None
     )
 
-    val_set = ContrailDataset(
-        mask_only=cfg.data.mask_only,
-        y_fix=cfg.data.y_fix,
+    val_set_base = ContrailDataset(
+        mask_only=cfg.data.mask_only, 
+        y_fix=cfg.data.y_fix
     )
 
-    test_set = ContrailDataset(
-        mask_only=cfg.data.mask_only,
-        y_fix=cfg.data.y_fix,
+    test_set_base = ContrailDataset(
+        mask_only=cfg.data.mask_only, 
+        y_fix=cfg.data.y_fix
     )
 
     train_loader = DataLoader(
-        Subset(train_set, train_indices),
+        Subset(train_set_base, train_idx),
         batch_size=cfg.data.batch_size,
         generator=generator,
         shuffle=True,
+        num_workers=4,
         pin_memory=True
     )
 
     val_loader = DataLoader(
-        Subset(val_set, val_indices),
-        batch_size=64,
-        shuffle=False,
+        Subset(val_set_base, val_idx), 
+        batch_size=64, 
+        shuffle=False, 
+        num_workers=4,
         pin_memory=True
     )
 
     test_loader = DataLoader(
-        Subset(test_set, test_indices),
-        batch_size=64,
-        shuffle=False,
+        Subset(test_set_base, test_idx), 
+        batch_size=64, 
+        shuffle=False, 
+        num_workers=4,
         pin_memory=True
     )
     
     model = instantiate(cfg.model)
-    # model = torch.compile(model)
     trainer = Trainer(**cfg.trainer, logger=logger, callbacks=[LearningRateMonitor('step')])
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
     
-    best_thresh = find_best_threshold(model, test_loader)
+    best_thresh = find_best_threshold(model, val_loader, device='cuda')
     model.threshold = best_thresh
     model.mask_only = cfg.data.mask_only
     
@@ -135,9 +140,5 @@ def main(cfg: DictConfig):
     
     return test_metrics
 
-
 if __name__ == "__main__":
     main()
-    
-
-     

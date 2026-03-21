@@ -191,7 +191,6 @@ class UNET(pl.LightningModule):
             
         self.model = UNETBase(in_channels=in_channels, out_channels=out_channels, enc_channels=enc_channels)
         self.threshold = threshold
-        self.sigmoid = nn.Sigmoid()
         self.bce_loss = smp.losses.FocalLoss(mode='binary')
         self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         self.dice_weight = dice_weight
@@ -261,8 +260,7 @@ class UNET(pl.LightningModule):
         imgs, targets = batch
         y_hat = self.model(imgs)
         loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
-        y_pred = self.sigmoid(y_hat)
-        dice_loss = dice_coef(targets, y_pred, thr=self.threshold)
+        dice_loss = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
         metrics['dice'] = dice_loss
         

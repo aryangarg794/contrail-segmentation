@@ -78,4 +78,4 @@ def shift(img):
     )
     return shifted_img.astype(img.dtype)
 
-TEST_IDXS = [1228, 947, 1376, 1340, 826]
+TEST_IDXS = [518, 327, 1181, 1147, 1713]

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from rich.progress import (
     BarColumn, 
@@ -11,6 +12,7 @@ from rich.progress import (
 
 def dice_coef(y_true, y_pred, thr=0.5, epsilon=0.001):
     y_true = y_true.flatten()
+    y_pred = F.sigmoid(y_pred)
     if thr is not None:
         y_pred = (y_pred > thr).float().flatten()
     else:
@@ -50,12 +52,13 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda'):
     
     best = -1
     best_thr = None
-    interval = 1.00 / num_vals
     
     thresholds = np.linspace(0, 1, num_vals)
     with progress_bar as p:
         for thr in thresholds:
             dice = dice_coef(targets, preds, thr)
+            print(dice)
+            print(thr)
             if dice > best:
                 best = dice
                 best_thr = thr
