@@ -3,6 +3,7 @@ import torch
 from segmentation_models_pytorch.metrics import get_stats, iou_score, f1_score 
 from torchmetrics.functional import auroc
 
+@torch.no_grad()
 def compute_metrics(y_hat, targets, thr=0.5):
     probs = torch.sigmoid(y_hat)
     preds = (probs > thr).long()
@@ -17,7 +18,7 @@ def compute_metrics(y_hat, targets, thr=0.5):
         "precision": tp / (tp + fp + 1e-7),
         "specificity": tn / (tn + fp + 1e-7),
         "accuracy": (tp + tn) / (tp + tn + fp + fn + 1e-7),
-        "auc": auroc(probs, targets, task="binary")
+        "auc": auroc(probs, targets, task="binary", thresholds=200)
     }
 
     metrics = {k: v.mean() for k, v in metrics.items()}

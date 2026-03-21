@@ -29,8 +29,8 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda'):
     all_targets = []
     for batch in dataloader:
         imgs, target = batch
-        imgs = imgs.to(device)
-        targets = target.to(device)
+        imgs.to(device=device)
+        target.to(device=device)
         
         logits = model.model(imgs)
         all_preds.append(logits.detach().cpu())

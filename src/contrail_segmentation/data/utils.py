@@ -2,8 +2,10 @@ import os
 import numpy as np
 import pandas as pd
 import cv2
+import h5py
 
-DATA_DIR = 'data/train'
+DATA_DIR = 'data'
+TRAIN_DIR = 'data/train'
 META_PATH = 'data/train_metadata.csv'
 
 # from https://github.com/divideconcept/fastnumpyio
@@ -17,25 +19,34 @@ def load(file):
         datasize *= dimension
     return np.ndarray(shape, dtype=descr, buffer=file.read(datasize))
 
+def get_mask_ind(idx: str, parent_folder: str = TRAIN_DIR):
+    idx = str(idx)
+    return load(os.path.join(parent_folder, idx, f'human_individual_masks.npy'))
 
 def get_band_images(idx: str, parent_folder: str, band: str):
     idx = str(idx)
     return load(os.path.join(parent_folder, idx, f'band_{band}.npy'))
 
-def get_mask(idx: str, parent_folder: str = DATA_DIR):
+def get_mask(idx: str, parent_folder: str = TRAIN_DIR):
     idx = str(idx)
     return load(os.path.join(parent_folder, idx, f'human_pixel_masks.npy'))
+
+def get_ash_image(idx: str, parent_folder: str = TRAIN_DIR, get_mask_only: bool = False):
+    idx = str(idx)
+    img = load(os.path.join(parent_folder, idx, f'ash_color_img.npy'))
+    return img if not get_mask_only else img[:, :, :, 4]
 
 _T11_BOUNDS = (243, 303)
 _CLOUD_TOP_TDIFF_BOUNDS = (-4, 5)
 _TDIFF_BOUNDS = (-4, 2)
 
 metadata = pd.read_csv(META_PATH)
+# train_file = h5py.File(DATA_DIR+'/train_dataset.h5', 'r')
 
 def normalize_range(data, bounds):
     return (data - bounds[0]) / (bounds[1] - bounds[0])
 
-def fake_color_img(idx, parent_folder = DATA_DIR, get_mask_frame_only=False):
+def fake_color_img(idx, parent_folder = TRAIN_DIR, get_mask_frame_only=False):
     
     band11 = get_band_images(idx, parent_folder, '11')
     band14 = get_band_images(idx, parent_folder, '14')
