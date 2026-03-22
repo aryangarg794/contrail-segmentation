@@ -26,7 +26,9 @@ class PretrainedUNET(pl.LightningModule):
         beta2: float = 0.999, 
         dice_weight: float = 0.5, 
         focal_weight: float = 0.5,
-        mask_only: bool = False, 
+        bce_loss: nn.Module = nn.BCEWithLogitsLoss, 
+        dice_loss: nn.Module = smp.losses.DiceLoss,
+        pos_weight: int = 10, 
         *args, 
         **kwargs
     ):
@@ -42,8 +44,13 @@ class PretrainedUNET(pl.LightningModule):
         
         self.threshold = threshold
         
-        self.bce_loss = smp.losses.FocalLoss(mode='binary', gamma=2.25, alpha=0.01)
-        self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
+        if isinstance(bce_loss, nn.BCEWithLogitsLoss):
+            pos_weight = torch.tensor([pos_weight])
+            self.bce_loss = bce_loss(pos_weight=pos_weight)
+        else: 
+            self.bce_loss = bce_loss()
+
+        self.dice_loss = dice_loss()
         self.dice_weight = dice_weight
         self.focal_weight = focal_weight
         
@@ -111,7 +118,7 @@ class PretrainedUNET(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
+        loss = self._loss(y_hat, targets)
         dice_loss = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
         metrics['dice'] = dice_loss

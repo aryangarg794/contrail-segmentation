@@ -9,3 +9,4 @@ run_name: pretrained_unet_fake_rgb
 seed: 0
 job_type: train
 device: cuda
+num_workers: 4

@@ -21,7 +21,7 @@ class ContrailDataset(Dataset):
     those for this dataset, input becomes (256, 256, 24) or (256, 256, 3) if only mask mode
     """
     
-    def __init__(self, mask_only=False, y_fix=False, soft=False, transform=None):
+    def __init__(self, mask_only=False, y_fix=False, soft=False, transform=None, val=False):
         super().__init__()
         self.df_meta = metadata
         self.mask_only = mask_only
@@ -29,6 +29,7 @@ class ContrailDataset(Dataset):
         self.transform = transform
         self.y_fix = y_fix
         self.file = None
+        self.val = val
         
     
     def __len__(self):
@@ -38,7 +39,7 @@ class ContrailDataset(Dataset):
         record_id = self.df_meta.loc[index]['record_id']
         img = get_ash_image(record_id, get_mask_only=self.mask_only).reshape(256, 256, -1).astype(np.float32)
         
-        if self.soft:
+        if self.soft and not self.val:
             target = np.mean(get_mask_ind(record_id), axis=3, keepdims=True)
         else:
             target = get_mask(record_id)

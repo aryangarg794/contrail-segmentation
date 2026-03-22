@@ -10,18 +10,28 @@ from rich.progress import (
     TimeElapsedColumn
 )
 
-def dice_coef(y_true, y_pred, thr=0.5, epsilon=0.001):
-    y_true = y_true.flatten()
+def dice_coef(y_true, y_pred, thr=0.5, epsilon=1e-7, pos_only=False):
     y_pred = F.sigmoid(y_pred)
     if thr is not None:
-        y_pred = (y_pred > thr).float().flatten()
-    else:
-        y_pred = y_pred.flatten().float()
+        y_pred = (y_pred > thr).float()
+    
+    y_true_flat = y_true.view(y_true.size(0), -1)
+    y_pred_flat = y_pred.view(y_pred.size(0), -1)
 
-    inter = (y_true * y_pred).sum()
-    den = y_true.sum() + y_pred.sum()
-    dice = (2.0 * inter + epsilon) / (den + epsilon)
-    return dice.item()
+    intersection = (y_true_flat * y_pred_flat).sum(dim=1)
+    denominator = y_true_flat.sum(dim=1) + y_pred_flat.sum(dim=1)
+    
+    dice_per_sample = (2.0 * intersection + epsilon) / (denominator + epsilon)
+
+    if pos_only:
+        is_positive_sample = (y_true_flat.sum(dim=1) > 0).float()
+        num_positive_samples = is_positive_sample.sum()
+        if num_positive_samples > 0:
+            return (dice_per_sample * is_positive_sample).sum() / num_positive_samples
+        else:
+            return torch.tensor(0.0, device=y_true.device)
+    else:
+        return dice_per_sample.mean()
 
 
 @torch.no_grad()
@@ -57,8 +67,6 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda'):
     with progress_bar as p:
         for thr in thresholds:
             dice = dice_coef(targets, preds, thr)
-            print(dice)
-            print(thr)
             if dice > best:
                 best = dice
                 best_thr = thr

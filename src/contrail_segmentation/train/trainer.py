@@ -23,6 +23,7 @@ from contrail_segmentation.data.dataset import ContrailDataset
 from contrail_segmentation.models.pretrained_unet import PretrainedUNET
 from contrail_segmentation.models.unet import UNET
 from contrail_segmentation.train.utils import find_best_threshold
+from contrail_segmentation.data.plotting import plot_train_examples
 from contrail_segmentation.data.utils import metadata
 
 import warnings
@@ -92,12 +93,14 @@ def main(cfg: DictConfig):
 
     val_set_base = ContrailDataset(
         mask_only=cfg.data.mask_only, 
-        y_fix=cfg.data.y_fix
+        y_fix=cfg.data.y_fix, 
+        val=True
     )
 
     test_set_base = ContrailDataset(
         mask_only=cfg.data.mask_only, 
-        y_fix=cfg.data.y_fix
+        y_fix=cfg.data.y_fix,
+        val=True
     )
 
     train_loader = DataLoader(
@@ -105,24 +108,27 @@ def main(cfg: DictConfig):
         batch_size=cfg.data.batch_size,
         generator=generator,
         shuffle=True,
-        num_workers=4,
-        pin_memory=True
+        num_workers=cfg.num_workers,
+        pin_memory=True,
+        persistent_workers=True
     )
 
     val_loader = DataLoader(
         Subset(val_set_base, val_idx), 
         batch_size=64, 
         shuffle=False, 
-        num_workers=4,
-        pin_memory=True
+        num_workers=cfg.num_workers,
+        pin_memory=True,
+        persistent_workers=True
     )
 
     test_loader = DataLoader(
         Subset(test_set_base, test_idx), 
         batch_size=64, 
         shuffle=False, 
-        num_workers=4,
-        pin_memory=True
+        num_workers=cfg.num_workers,
+        pin_memory=True,
+        persistent_workers=True
     )
     
     model = instantiate(cfg.model)
@@ -132,7 +138,8 @@ def main(cfg: DictConfig):
     best_thresh = find_best_threshold(model, val_loader, device='cuda')
     model.threshold = best_thresh
     model.mask_only = cfg.data.mask_only
-    
+
+    plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only)
     test_metrics = trainer.test(model, dataloaders=test_loader)
     
     torch.cuda.empty_cache()
