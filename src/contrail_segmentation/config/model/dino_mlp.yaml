@@ -1,0 +1,10 @@
+_target_: contrail_segmentation.models.dino_mlp.DINOv2MLP
+
+model_name: facebook/dinov2-base
+num_vpt: 50
+
+lr: 1e-4
+wd: 1e-3
+beta1: 0.9
+beta2: 0.999
+threshold: 0.5
