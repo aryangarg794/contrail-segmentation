@@ -145,6 +145,7 @@ class AttentionUNetConvNeXt(pl.LightningModule):
         wd: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.999,
+        total_steps: int = 10000,
         *args,
         **kwargs,
     ):
@@ -154,6 +155,7 @@ class AttentionUNetConvNeXt(pl.LightningModule):
         self.wd = wd
         self.betas = (beta1, beta2)
         self.threshold = threshold
+        self.total_steps = total_steps
 
         self.model = AttentionUNetConvNeXtModel(
             in_channels=in_channels,
@@ -209,7 +211,7 @@ class AttentionUNetConvNeXt(pl.LightningModule):
             weight_decay=self.wd,
             betas=self.betas,
         )
-        total_steps = self.trainer.estimated_stepping_batches
+        total_steps = self.total_steps
         num_warmup_steps = int(0.05 * total_steps)
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
