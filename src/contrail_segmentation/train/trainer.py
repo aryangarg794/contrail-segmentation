@@ -80,9 +80,10 @@ def main(cfg: DictConfig):
         mask_only=cfg.data.mask_only    
     )
     
-    train_loader = DataLoader(Subset(train_set, train_indices), batch_size=cfg.data.batch_size, generator=generator, 
-                              shuffle=True, pin_memory=True)
-    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=cfg.data.batch_size, pin_memory=True)
+    train_loader = DataLoader(Subset(train_set, train_indices), batch_size=cfg.data.batch_size, generator=generator,
+                              shuffle=True, pin_memory=True, num_workers=8, persistent_workers=True)
+    test_loader = DataLoader(Subset(test_set, test_indices), batch_size=cfg.data.batch_size, pin_memory=True,
+                             num_workers=4, persistent_workers=True)
     
     model = instantiate(cfg.model)
     trainer = Trainer(**cfg.trainer, logger=logger)

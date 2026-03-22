@@ -1,0 +1,10 @@
+_target_: contrail_segmentation.models.attention_unet_convnext.AttentionUNetConvNeXt
+
+in_channels: 24
+backbone: convnext_tiny
+
+lr: 1e-4
+wd: 1e-3
+beta1: 0.9
+beta2: 0.999
+threshold: 0.5
