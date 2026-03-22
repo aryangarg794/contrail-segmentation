@@ -211,7 +211,7 @@ class AttentionUNetConvNeXt(pl.LightningModule):
             weight_decay=self.wd,
             betas=self.betas,
         )
-        total_steps = self.total_steps
+        total_steps = self.trainer.estimated_stepping_batches
         num_warmup_steps = int(0.05 * total_steps)
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
