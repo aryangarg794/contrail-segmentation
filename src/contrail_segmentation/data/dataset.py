@@ -22,7 +22,7 @@ class ContrailDataset(Dataset):
         return len(self.df_meta)
 
     def __getitem__(self, index):
-        record_id = self.df_meta.loc[index]['record_id']
+        record_id = str(int(self.df_meta.loc[index]['record_id']))
         img = fake_color_img(record_id, get_mask_frame_only=self.mask_only).reshape(256, 256, -1).astype(np.float32)
         target = get_mask(record_id).astype(np.float32)
 
