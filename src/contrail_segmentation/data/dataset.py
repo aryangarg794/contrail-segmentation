@@ -14,7 +14,12 @@ class ContrailDataset(Dataset):
 
     def __init__(self, mask_only=False, transform=None):
         super().__init__()
-        self.df_meta = _utils.metadata
+        import os
+        df = _utils.metadata.copy()
+        if os.path.exists(_utils.DATA_DIR):
+            available = set(os.listdir(_utils.DATA_DIR))
+            df = df[df['record_id'].apply(lambda x: str(int(x))).isin(available)].reset_index(drop=True)
+        self.df_meta = df
         self.mask_only = mask_only
         self.transform = transform
 
