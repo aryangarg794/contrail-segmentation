@@ -40,7 +40,7 @@ class PretrainedUNET(pl.LightningModule):
         self.threshold = threshold
         self.sigmoid = nn.Sigmoid()
         
-        self.focal_loss = smp.losses.FocalLoss(mode='binary', from_logits=True)
+        self.focal_loss = smp.losses.FocalLoss(mode='binary')
         self.sr_loss = SRLoss(H=256, W=256, num_angles=90, alpha=0.5)
         
     def _forward_pass(self, batch):
