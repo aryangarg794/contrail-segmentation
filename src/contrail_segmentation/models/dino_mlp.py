@@ -14,8 +14,8 @@ from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
 
 
-class DINOv2MLPModel(nn.Module):
-    def __init__(self, model_name="facebook/dinov2-base", num_vpt=50):
+class DINOv3MLPModel(nn.Module):
+    def __init__(self, model_name="facebook/dinov3-vitb16-pretrain-lvd1689m", num_vpt=50):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(model_name)
         for param in self.backbone.parameters():
@@ -65,11 +65,11 @@ class DINOv2MLPModel(nn.Module):
         return F.interpolate(mask_low_res, size=(H, W), mode='bilinear', align_corners=False)
 
 
-class DINOv2MLP(pl.LightningModule):
+class DINOv3MLP(pl.LightningModule):
 
     def __init__(
         self,
-        model_name: str = "facebook/dinov2-base",
+        model_name: str = "facebook/dinov3-vitb16-pretrain-lvd1689m",
         num_vpt: int = 50,
         threshold: float = 0.5,
         lr: float = 1e-4,
@@ -85,7 +85,7 @@ class DINOv2MLP(pl.LightningModule):
         self.betas = (beta1, beta2)
         self.threshold = threshold
 
-        self.model = DINOv2MLPModel(model_name=model_name, num_vpt=num_vpt)
+        self.model = DINOv3MLPModel(model_name=model_name, num_vpt=num_vpt)
 
         self.sigmoid = nn.Sigmoid()
         self.bce_loss = smp.losses.FocalLoss(mode='binary')

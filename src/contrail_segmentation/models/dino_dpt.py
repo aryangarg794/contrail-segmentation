@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from transformers import AutoModel
 
 
-class DINOv2VPT(nn.Module):
-    def __init__(self, model_name="facebook/dinov2-large", num_tokens=50):
+class DINOv3VPT(nn.Module):
+    def __init__(self, model_name="facebook/dinov3-vitb16-pretrain-lvd1689m", num_tokens=50):
         super().__init__()
 
         self.backbone = AutoModel.from_pretrained(model_name)
