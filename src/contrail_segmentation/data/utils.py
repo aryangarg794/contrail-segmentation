@@ -2,8 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 
-DATA_DIR = 'data/train'
-META_PATH = 'data/train_metadata.json'
+DATA_DIR = '/media/nicomoft/Stuff/CV/final_project/train'
+META_PATH = '/media/nicomoft/Stuff/CV/final_project/train_metadata.json'
 
 def get_band_images(idx: str, parent_folder: str, band: str):
     idx = str(idx)

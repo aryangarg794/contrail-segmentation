@@ -1,11 +1,11 @@
 defaults:
 - data: data
-- model: pretrained_unet
+- model: attention_unet_convnext
 - trainer: train
 - wandb: wandb
 - _self_
 
-run_name: pretrained_unet_fake_rgb
+run_name: attention_unet_convnext_fake_rgb
 seed: 0
 job_type: train
 device: cuda
