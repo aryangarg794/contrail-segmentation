@@ -48,11 +48,11 @@ class SoftHoughTransform(nn.Module):
             hough: [B, num_angles, num_rhos]
         """
         B = mask.shape[0]
-        mask_flat = mask.squeeze(1).reshape(B, -1)  # [B, H*W]
+        mask_flat = mask.squeeze(1).reshape(B, -1).float()  # always fp32
 
         hough = torch.zeros(
             B, self.num_angles, self.num_rhos,
-            device=mask.device, dtype=mask.dtype,
+            device=mask.device, dtype=torch.float32,
         )
         for a in range(self.num_angles):
             w_floor = (1 - self.rho_frac[a]) * mask_flat   # [B, H*W]
