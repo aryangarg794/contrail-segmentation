@@ -14,6 +14,7 @@ from transformers import get_cosine_schedule_with_warmup
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
+from contrail_segmentation.train.losses import SRLoss
 from contrail_segmentation.train.utils import dice_coef
 
 class PretrainedUNET(pl.LightningModule):
@@ -39,13 +40,13 @@ class PretrainedUNET(pl.LightningModule):
         self.threshold = threshold
         self.sigmoid = nn.Sigmoid()
         
-        self.bce_loss = smp.losses.FocalLoss(mode='binary')
-        self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
+        self.focal_loss = smp.losses.FocalLoss(mode='binary', from_logits=True)
+        self.sr_loss = SRLoss(H=256, W=256, num_angles=90, alpha=0.5)
         
     def _forward_pass(self, batch):
         imgs, targets = batch 
         y_hat = self.model(imgs)
-        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
+        loss = self.focal_loss(y_hat, targets) + self.sr_loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         
         return loss, dice
@@ -95,9 +96,8 @@ class PretrainedUNET(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
-        y_pred = self.sigmoid(y_hat)
-        dice_loss = dice_coef(targets, y_pred, thr=self.threshold)
+        loss = self.focal_loss(y_hat, targets) + self.sr_loss(y_hat, targets)
+        dice_loss = dice_coef(targets, y_hat, thr=self.threshold)
         
         self.log(
             'test/loss', 

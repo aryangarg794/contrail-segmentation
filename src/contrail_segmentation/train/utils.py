@@ -12,7 +12,7 @@ from rich.progress import (
 def dice_coef(y_true, y_pred, thr=0.5, epsilon=0.001):
     y_true = y_true.flatten()
     if thr is not None:
-        y_pred = (y_pred > thr).float().flatten()
+        y_pred = (torch.sigmoid(y_pred) > thr).float().flatten()
     else:
         y_pred = y_pred.flatten().float()
 
