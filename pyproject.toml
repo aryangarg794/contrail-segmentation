@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Aryan Garg", email = "aryangarg794@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "albumentations>=2.0.8",
     "dill>=0.4.1",
