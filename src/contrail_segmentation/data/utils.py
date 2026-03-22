@@ -9,7 +9,9 @@ def get_band_images(idx: str, parent_folder: str, band: str):
     idx = str(idx)
     return np.load(os.path.join(parent_folder, idx, f'band_{band}.npy'))
 
-def get_mask(idx: str, parent_folder: str = DATA_DIR):
+def get_mask(idx: str, parent_folder: str = None):
+    if parent_folder is None:
+        parent_folder = DATA_DIR
     idx = str(idx)
     return np.load(os.path.join(parent_folder, idx, f'human_pixel_masks.npy'))
 
@@ -25,7 +27,9 @@ except FileNotFoundError:
 def normalize_range(data, bounds):
     return (data - bounds[0]) / (bounds[1] - bounds[0])
 
-def fake_color_img(idx, parent_folder = DATA_DIR, get_mask_frame_only=False):
+def fake_color_img(idx, parent_folder=None, get_mask_frame_only=False):
+    if parent_folder is None:
+        parent_folder = DATA_DIR
     
     band11 = get_band_images(idx, parent_folder, '11')
     band14 = get_band_images(idx, parent_folder, '14')
