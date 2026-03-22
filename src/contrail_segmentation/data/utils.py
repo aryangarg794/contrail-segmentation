@@ -17,7 +17,10 @@ _T11_BOUNDS = (243, 303)
 _CLOUD_TOP_TDIFF_BOUNDS = (-4, 5)
 _TDIFF_BOUNDS = (-4, 2)
 
-metadata = pd.read_json(META_PATH)
+try:
+    metadata = pd.read_json(META_PATH)
+except FileNotFoundError:
+    metadata = None
 
 def normalize_range(data, bounds):
     return (data - bounds[0]) / (bounds[1] - bounds[0])
