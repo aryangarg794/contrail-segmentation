@@ -3,7 +3,8 @@ import torch
 
 from torch.utils.data import Dataset
 
-from contrail_segmentation.data.utils import fake_color_img, get_mask, metadata
+import contrail_segmentation.data.utils as _utils
+from contrail_segmentation.data.utils import fake_color_img, get_mask
 
 
 class ContrailDataset(Dataset):
@@ -13,7 +14,7 @@ class ContrailDataset(Dataset):
 
     def __init__(self, mask_only=False, transform=None):
         super().__init__()
-        self.df_meta = metadata
+        self.df_meta = _utils.metadata
         self.mask_only = mask_only
         self.transform = transform
 
