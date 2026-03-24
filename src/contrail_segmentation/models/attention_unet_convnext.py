@@ -71,10 +71,10 @@ class AttentionUNetConvNeXtModel(nn.Module):
     ):
         super().__init__()
 
-        # Backbone encoder — load pretrained weights, then replace stem conv for 24-ch input
-        self.backbone = timm.create_model(
-            backbone, pretrained=True, features_only=True,
-        )
+        # Backbone encoder — load pretrained weights, then replace stem conv for 24-ch input.
+        # Create without features_only so stem is directly accessible, then extract
+        # features manually in forward() via self.backbone.stages[i].
+        self.backbone = timm.create_model(backbone, pretrained=True)
         first_conv = self.backbone.stem[0]
         new_conv = nn.Conv2d(
             in_channels, first_conv.out_channels,
@@ -122,7 +122,11 @@ class AttentionUNetConvNeXtModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         H, W = x.shape[2:]
 
-        f1, f2, f3, f4 = self.backbone(x)
+        x_enc = self.backbone.stem(x)
+        f1 = self.backbone.stages[0](x_enc)
+        f2 = self.backbone.stages[1](f1)
+        f3 = self.backbone.stages[2](f2)
+        f4 = self.backbone.stages[3](f3)
 
         b = self.bottleneck(f4)
 
