@@ -13,7 +13,7 @@ from PIL import Image
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
-from contrail_segmentation.train.losses import SRLoss
+from contrail_segmentation.train.losses import SRLoss, SRLoss_HC
 from contrail_segmentation.train.utils import dice_coef
 
 class ConvNeXtBlock(nn.Module):
