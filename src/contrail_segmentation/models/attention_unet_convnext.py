@@ -177,7 +177,7 @@ class AttentionUNetConvNeXt(pl.LightningModule):
 
         self.sigmoid = nn.Sigmoid()
         self.focal_loss = smp.losses.FocalLoss(mode='binary', alpha=0.75)
-        self.sr_loss = SRLoss(H=256, W=256, num_angles=90, alpha=0.5)
+        self.sr_loss = SRLoss_HC(H=256, W=256, num_angles=90, alpha=0.5)
 
     def _forward_pass(self, batch):
         imgs, targets = batch
