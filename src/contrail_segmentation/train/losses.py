@@ -72,6 +72,41 @@ def _soft_dice_loss(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-6)
     den   = pred_flat.sum(dim=1) + target_flat.sum(dim=1)
     return (1 - (2 * inter + eps) / (den + eps)).mean()
 
+class SRLoss_HC(nn.Module):
+    def __init__(self, H: int = 256, W: int = 256, num_angles: int = 90, alpha: float = 0.5):
+        super().__init__()
+        self.alpha = alpha
+        self.hough = SoftHoughTransform(H, W, num_angles)
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        pred_prob = torch.sigmoid(pred)
+        target_f  = target.float()
+
+        # Identify positive samples — any sample with at least one contrail pixel
+        has_contrail = target_f.amax(dim=[1, 2, 3]) > 0  # [B] boolean mask
+
+        if not has_contrail.any():
+            # No positive samples in this batch — return zero loss
+            return torch.tensor(0.0, device=pred.device, requires_grad=True)
+
+        # Only compute on positive samples
+        pred_pos   = pred_prob[has_contrail]
+        target_pos = target_f[has_contrail]
+
+        # Pixel-space Dice — only on positives
+        loss_image = _soft_dice_loss(pred_pos, target_pos)
+
+        # Hough-space Dice — only on positives
+        pred_h   = self.hough(pred_pos)
+        target_h = self.hough(target_pos)
+
+        # Normalization is now safe — target_h is never all-zero
+        pred_h   = pred_h   / (pred_h.amax(dim=[1, 2], keepdim=True)   + 1e-8)
+        target_h = target_h / (target_h.amax(dim=[1, 2], keepdim=True) + 1e-8)
+
+        loss_hough = _soft_dice_loss(pred_h, target_h)
+
+        return (1 - self.alpha) * loss_image + self.alpha * loss_hough
 
 class SRLoss(nn.Module):
     """
