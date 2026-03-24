@@ -10,7 +10,6 @@ import torch.nn.functional as F
 import wandb
 
 from PIL import Image
-from transformers import get_cosine_schedule_with_warmup
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
@@ -72,10 +71,19 @@ class AttentionUNetConvNeXtModel(nn.Module):
     ):
         super().__init__()
 
-        # Backbone encoder (fully trainable)
+        # Backbone encoder — load pretrained weights, then replace stem conv for 24-ch input
         self.backbone = timm.create_model(
-            backbone, pretrained=False, features_only=True, in_chans=in_channels,
+            backbone, pretrained=True, features_only=True,
         )
+        first_conv = self.backbone.stem[0]
+        new_conv = nn.Conv2d(
+            in_channels, first_conv.out_channels,
+            kernel_size=first_conv.kernel_size, stride=first_conv.stride,
+            padding=first_conv.padding, bias=False,
+        )
+        nn.init.kaiming_normal_(new_conv.weight)
+        self.backbone.stem[0] = new_conv
+
         f1_ch, f2_ch, f3_ch, f4_ch = [s['num_chs'] for s in self.backbone.feature_info]
 
         # Bottleneck
@@ -175,9 +183,13 @@ class AttentionUNetConvNeXt(pl.LightningModule):
         return loss, dice
 
     def training_step(self, batch, batch_idx):
-        loss, dice = self._forward_pass(batch)
+        imgs, targets = batch
+        y_hat = self.model(imgs)
+        loss = self.focal_loss(y_hat, targets) + self.sr_loss(y_hat, targets)
+        dice = dice_coef(targets, y_hat.detach(), thr=0.2)  # lower thr while model is still learning
         self.log('train/loss', loss, on_step=True,  on_epoch=True, prog_bar=True)
         self.log('train/dice', dice, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('train/lr', self.trainer.optimizers[0].param_groups[0]['lr'], on_step=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
@@ -213,10 +225,17 @@ class AttentionUNetConvNeXt(pl.LightningModule):
         )
         total_steps = self.trainer.estimated_stepping_batches
         num_warmup_steps = int(0.05 * total_steps)
-        scheduler = get_cosine_schedule_with_warmup(
+        # Linear warmup then cosine decay — eta_min prevents LR crashing to 0
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-2, end_factor=1.0, total_iters=num_warmup_steps,
+        )
+        cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=total_steps - num_warmup_steps, eta_min=1e-6,
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
             optimizer,
-            num_warmup_steps=num_warmup_steps,
-            num_training_steps=total_steps,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[num_warmup_steps],
         )
         return {
             "optimizer": optimizer,

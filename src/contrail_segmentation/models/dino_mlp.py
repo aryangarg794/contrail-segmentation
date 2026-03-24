@@ -11,6 +11,7 @@ from transformers import AutoModel, get_cosine_schedule_with_warmup
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
+from contrail_segmentation.train.losses import SRLoss
 from contrail_segmentation.train.utils import dice_coef
 
 

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 DATA_DIR = '/media/nicomoft/Stuff/CV/final_project/train'
-META_PATH = '/media/nicomoft/Stuff/CV/final_project/train_metadata.json'
+META_PATH = os.path.join(os.path.dirname(__file__), '../../../../data/train_metadata.csv')
 
 def get_band_images(idx: str, parent_folder: str, band: str):
     idx = str(idx)
@@ -20,7 +20,7 @@ _CLOUD_TOP_TDIFF_BOUNDS = (-4, 5)
 _TDIFF_BOUNDS = (-4, 2)
 
 try:
-    metadata = pd.read_json(META_PATH)
+    metadata = pd.read_csv(META_PATH)
 except FileNotFoundError:
     metadata = None
 
