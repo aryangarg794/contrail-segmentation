@@ -181,13 +181,20 @@ class AttentionUNetConvNeXt(pl.LightningModule):
         loss = self.focal_loss(y_hat, targets) + self.sr_loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         return loss, dice
-
+    
     def training_step(self, batch, batch_idx):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        loss = self.focal_loss(y_hat, targets) + self.sr_loss(y_hat, targets)
-        dice = dice_coef(targets, y_hat.detach(), thr=0.2)  # lower thr while model is still learning
-        self.log('train/loss', loss, on_step=True,  on_epoch=True, prog_bar=True)
+        
+        focal = self.focal_loss(y_hat, targets)
+        sr = self.sr_loss(y_hat, targets)
+        loss = focal + sr
+        
+        dice = dice_coef(targets, y_hat.detach(), thr=0.2)
+        
+        self.log('train/focal_loss', focal, on_step=True)
+        self.log('train/sr_loss', sr, on_step=True)
+        self.log('train/loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log('train/dice', dice, on_step=False, on_epoch=True, prog_bar=True)
         self.log('train/lr', self.trainer.optimizers[0].param_groups[0]['lr'], on_step=True)
         return loss
