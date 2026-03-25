@@ -4,7 +4,10 @@ model_name: facebook/dinov3-vitb16-pretrain-lvd1689m
 num_vpt: 50
 
 lr: 1e-4
+vpt_lr: 1e-3
 wd: 1e-3
 beta1: 0.9
 beta2: 0.999
 threshold: 0.5
+sr_alpha: 0.2
+pos_weight: 50.0

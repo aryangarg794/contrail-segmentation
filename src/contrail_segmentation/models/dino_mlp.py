@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning as pl
-import segmentation_models_pytorch as smp
 import wandb
 
 from PIL import Image
@@ -74,28 +73,37 @@ class DINOv3MLP(pl.LightningModule):
         num_vpt: int = 50,
         threshold: float = 0.5,
         lr: float = 1e-4,
+        vpt_lr: float = 1e-3,
         wd: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.999,
+        sr_alpha: float = 0.2,
+        pos_weight: float = 50.0,
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.lr = lr
+        self.vpt_lr = vpt_lr
         self.wd = wd
         self.betas = (beta1, beta2)
         self.threshold = threshold
+        self.pos_weight = pos_weight
 
         self.model = DINOv3MLPModel(model_name=model_name, num_vpt=num_vpt)
 
         self.sigmoid = nn.Sigmoid()
-        self.bce_loss = smp.losses.FocalLoss(mode='binary')
-        self.dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
+        self.sr_loss = SRLoss(H=256, W=256, num_angles=90, alpha=sr_alpha)
 
     def _forward_pass(self, batch):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
+        sr = self.sr_loss(y_hat, targets)
+        bce = F.binary_cross_entropy_with_logits(
+            y_hat, targets.float(),
+            pos_weight=torch.tensor([self.pos_weight], device=y_hat.device),
+        )
+        loss = 0.3 * bce + 0.7 * sr
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         return loss, dice
 
@@ -112,13 +120,9 @@ class DINOv3MLP(pl.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx):
-        imgs, targets = batch
-        y_hat = self.model(imgs)
-        loss = self.bce_loss(y_hat, targets) + self.dice_loss(y_hat, targets)
-        y_pred = self.sigmoid(y_hat)
-        dice_loss = dice_coef(targets, y_pred, thr=self.threshold)
-        self.log('test/loss', loss,      on_step=False, on_epoch=True)
-        self.log('test/dice', dice_loss, on_step=False, on_epoch=True)
+        loss, dice = self._forward_pass(batch)
+        self.log('test/loss', loss, on_step=False, on_epoch=True)
+        self.log('test/dice', dice, on_step=False, on_epoch=True)
         return loss
 
     def on_test_epoch_end(self):
@@ -133,8 +137,10 @@ class DINOv3MLP(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, self.model.parameters()),
-            lr=self.lr,
+            [
+                {"params": self.model.vpt_embeddings, "lr": self.vpt_lr},
+                {"params": self.model.mlp_head.parameters(), "lr": self.lr},
+            ],
             weight_decay=self.wd,
             betas=self.betas,
         )
