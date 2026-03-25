@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning as pl
+import segmentation_models_pytorch as smp
 import wandb
 
 from PIL import Image
@@ -10,7 +11,6 @@ from transformers import AutoModel, get_cosine_schedule_with_warmup
 
 from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
-from contrail_segmentation.train.losses import SRLoss
 from contrail_segmentation.train.utils import dice_coef
 
 
@@ -70,8 +70,8 @@ class DINOv2Probe(pl.LightningModule):
         wd: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.999,
-        sr_alpha: float = 0.2,
-        pos_weight: float = 50.0,
+        tversky_alpha: float = 0.3,
+        tversky_beta: float = 0.7,
         *args,
         **kwargs,
     ):
@@ -80,22 +80,18 @@ class DINOv2Probe(pl.LightningModule):
         self.wd = wd
         self.betas = (beta1, beta2)
         self.threshold = threshold
-        self.pos_weight = pos_weight
 
         self.model = DINOv2ProbeModel(model_name=model_name)
 
         self.sigmoid = nn.Sigmoid()
-        self.sr_loss = SRLoss(H=256, W=256, num_angles=90, alpha=sr_alpha)
+        self.focal_loss   = smp.losses.FocalLoss(mode='binary')
+        self.tversky_loss = smp.losses.TverskyLoss(mode='binary', from_logits=True,
+                                                    alpha=tversky_alpha, beta=tversky_beta)
 
     def _forward_pass(self, batch):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        sr = self.sr_loss(y_hat, targets)
-        bce = F.binary_cross_entropy_with_logits(
-            y_hat, targets.float(),
-            pos_weight=torch.tensor([self.pos_weight], device=y_hat.device),
-        )
-        loss = 0.3 * bce + 0.7 * sr
+        loss = 0.5 * self.focal_loss(y_hat, targets) + 0.5 * self.tversky_loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         return loss, dice
 

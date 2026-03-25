@@ -7,5 +7,5 @@ wd: 1e-3
 beta1: 0.9
 beta2: 0.999
 threshold: 0.5
-sr_alpha: 0.2
-pos_weight: 50.0
+tversky_alpha: 0.3
+tversky_beta: 0.7
