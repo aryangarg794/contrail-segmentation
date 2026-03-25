@@ -16,7 +16,7 @@ from contrail_segmentation.train.utils import dice_coef
 
 
 class DINOv3MLPModel(nn.Module):
-    def __init__(self, model_name="facebook/dinov3-vitb16-pretrain-lvd1689m", num_vpt=50):
+    def __init__(self, model_name="facebook/dinov2-base", num_vpt=50):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(model_name)
         for param in self.backbone.parameters():
@@ -70,7 +70,7 @@ class DINOv3MLP(pl.LightningModule):
 
     def __init__(
         self,
-        model_name: str = "facebook/dinov3-vitb16-pretrain-lvd1689m",
+        model_name: str = "facebook/dinov2-base",
         num_vpt: int = 50,
         threshold: float = 0.5,
         lr: float = 1e-4,
