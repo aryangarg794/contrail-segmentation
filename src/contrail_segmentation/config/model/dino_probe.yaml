@@ -1,0 +1,11 @@
+_target_: contrail_segmentation.models.dino_probe.DINOv2Probe
+
+model_name: facebook/dinov2-base
+
+lr: 1e-4
+wd: 1e-3
+beta1: 0.9
+beta2: 0.999
+threshold: 0.5
+sr_alpha: 0.2
+pos_weight: 50.0
