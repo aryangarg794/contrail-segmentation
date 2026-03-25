@@ -50,7 +50,7 @@ class DINOv3MLPModel(nn.Module):
         for i, layer in enumerate(self.backbone.encoder.layer):
             prompts = self.vpt_embeddings[i].unsqueeze(0).expand(B, -1, -1)
             x = torch.cat([prompts, x], dim=1)
-            x = layer(x)[0]
+            x = layer(x)
             x = x[:, self.num_vpt:, :]  # strip VPT tokens
 
             if i in self.target_layers:
