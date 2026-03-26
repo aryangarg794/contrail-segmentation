@@ -1,4 +1,5 @@
 import io
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,13 +31,19 @@ class DINOv2ProbeModel(nn.Module):
         ]
 
         self.mlp_head = nn.Sequential(
+            nn.LayerNorm(self.embed_dim * 4),  # DINO intermediate features are not normalized
             nn.Linear(self.embed_dim * 4, 512),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(0.1),
             nn.Linear(512, 256),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(256, 1),
         )
+
+        # init final bias to the contrail prior (~2% positive pixels)
+        # so the model starts at p≈0.02 everywhere instead of p=0.5
+        prior = 0.02
+        self.mlp_head[-1].bias.data.fill_(math.log(prior / (1 - prior)))  # mlp_head[-1] is still the final Linear
 
     def forward(self, x):
         B, _, H, W = x.shape
@@ -70,6 +77,7 @@ class DINOv2Probe(pl.LightningModule):
         wd: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.999,
+        pos_weight: float = 50.0,
         tversky_alpha: float = 0.3,
         tversky_beta: float = 0.7,
         *args,
@@ -84,14 +92,14 @@ class DINOv2Probe(pl.LightningModule):
         self.model = DINOv2ProbeModel(model_name=model_name)
 
         self.sigmoid = nn.Sigmoid()
-        self.focal_loss   = smp.losses.FocalLoss(mode='binary')
+        self.bce_loss     = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]))
         self.tversky_loss = smp.losses.TverskyLoss(mode='binary', from_logits=True,
                                                     alpha=tversky_alpha, beta=tversky_beta)
 
     def _forward_pass(self, batch):
         imgs, targets = batch
         y_hat = self.model(imgs)
-        loss = 0.5 * self.focal_loss(y_hat, targets) + 0.5 * self.tversky_loss(y_hat, targets)
+        loss = 0.3 * self.bce_loss(y_hat, targets.float()) + 0.7 * self.tversky_loss(y_hat, targets)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         return loss, dice
 
