@@ -18,6 +18,7 @@ class PretrainedUNET(pl.LightningModule):
     
     def __init__(
         self, 
+        soft: bool, 
         encoder_class: nn.Module, 
         threshold: float = 0.5, 
         lr: float = 1e-3, 
@@ -43,6 +44,7 @@ class PretrainedUNET(pl.LightningModule):
         self.encoder_weights = encoder_class.keywords.get("encoder_weights")
         
         self.threshold = threshold
+        self.soft = soft
         
         if isinstance(bce_loss, nn.BCEWithLogitsLoss):
             pos_weight = torch.tensor([pos_weight])
@@ -54,14 +56,24 @@ class PretrainedUNET(pl.LightningModule):
         self.dice_weight = dice_weight
         self.focal_weight = focal_weight
         
-    def _loss(self, preds, targets):
-        return self.dice_weight * self.dice_loss(preds, targets) + \
-            self.focal_weight * self.bce_loss(preds, targets)              
+    def _loss(self, preds, targets, targets_soft=None):
+        if self.soft:
+            loss = self.dice_weight * self.dice_loss(preds, targets_soft) + \
+            self.focal_weight * self.bce_loss(preds, targets)  
+        else:
+            loss = self.dice_weight * self.dice_loss(preds, targets) + \
+            self.focal_weight * self.bce_loss(preds, targets)
+        return loss     
         
     def _forward_pass(self, batch):
-        imgs, targets = batch 
+        if self.soft: 
+            imgs, targets, target_softs = batch
+        else:
+            imgs, targets = batch
+            target_softs = None
+        
         y_hat = self.model(imgs)
-        loss = self._loss(y_hat, targets)
+        loss = self._loss(y_hat, targets, target_softs)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
         metrics['dice'] = dice
@@ -116,12 +128,7 @@ class PretrainedUNET(pl.LightningModule):
         return loss 
     
     def test_step(self, batch, batch_idx):
-        imgs, targets = batch
-        y_hat = self.model(imgs)
-        loss = self._loss(y_hat, targets)
-        dice_loss = dice_coef(targets, y_hat.detach(), thr=self.threshold)
-        metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
-        metrics['dice'] = dice_loss
+        loss, metrics = self._forward_pass(batch)
         
         self.log(
             'test/loss', 

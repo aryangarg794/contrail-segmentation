@@ -39,23 +39,26 @@ class ContrailDataset(Dataset):
         record_id = self.df_meta.loc[index]['record_id']
         img = get_ash_image(record_id, get_mask_only=self.mask_only).reshape(256, 256, -1).astype(np.float32)
         
-        if self.soft and not self.val:
-            target = np.mean(get_mask_ind(record_id), axis=3, keepdims=True)
-        else:
-            target = get_mask(record_id)
+        target_soft = np.mean(get_mask_ind(record_id), axis=3)
+        target = get_mask(record_id)
 
         if self.y_fix:
             img = shift(img)
 
         if self.transform is not None:
-            augmented = self.transform(image=img, target=target)
+            augmented = self.transform(image=img, target=target, soft=target_soft)
             img = augmented["image"]
             target = augmented["target"]
+            target_soft = augmented["soft"]
 
         img = torch.tensor(img).permute(2, 0, 1).float()
         target = torch.tensor(target).permute(2, 0, 1).float()
+        target_soft = torch.tensor(target_soft).permute(2, 0, 1).float()
         
-        return img, target
+        if self.soft:
+            return img, target, target_soft
+        else:
+            return img, target
     
     # def __getitem__(self, index):
     #     if self.file is None: # Only open when the worker actually starts

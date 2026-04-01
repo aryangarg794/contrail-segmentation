@@ -1,4 +1,5 @@
 _target_: contrail_segmentation.models.pretrained_unet.PretrainedUNET
+_partial_: true
 
 lr: 1e-4 
 wd: 1e-2
@@ -14,14 +15,15 @@ encoder_class:
   _target_: segmentation_models_pytorch.Unet
   encoder_name: resnet50
   encoder_weights: imagenet
-  in_channels: 24
+  in_channels: 3
   classes: 1
 
-dice_loss: 
+dice_loss:
   _partial_: true
   _target_: segmentation_models_pytorch.losses.DiceLoss
   from_logits: true
   mode: binary
+  log_loss: true
 
 bce_loss: 
   _partial_: true

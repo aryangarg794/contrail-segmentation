@@ -1,5 +1,5 @@
-batch_size: 32
-mask_only: false
-transform: false
-y_fix: false
-soft: false
+batch_size: 16
+mask_only: true
+transform: true
+y_fix: true
+soft: true
