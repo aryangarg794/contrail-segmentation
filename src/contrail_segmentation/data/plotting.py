@@ -9,13 +9,17 @@ from PIL import Image
 from contrail_segmentation.data.utils import get_mask, fake_color_img, metadata, get_ash_image
 
 def plot_train_examples(model: nn.Module, logger, train_loader, device: str = 'cuda', num_values: int = 5,
-                        mask_only: bool = False):
+                        mask_only: bool = False, soft: bool = False):
     inputs = []
     outputs = []
     found_empty = False
     
     for batch in train_loader:
-        imgs, targets = batch
+        if soft:
+            imgs, targets, _ = batch
+        else:
+            imgs, targets = batch
+            
         for i in range(imgs.size(0)):
             has_contrail = targets[i].sum() > 0
             

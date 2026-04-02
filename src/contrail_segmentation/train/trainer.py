@@ -50,9 +50,9 @@ def main(cfg: DictConfig):
         generator = torch.Generator().manual_seed(seed)
         
         train_transform = A.Compose([
-            A.RandomRotate90(p=0.75),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.HorizontalFlip(p=0.25),
+            A.VerticalFlip(p=0.25),
             A.Affine(
                 scale=(0.9, 1.1),
                 rotate=(-15, 15),
@@ -60,6 +60,7 @@ def main(cfg: DictConfig):
                 shear=(-5, 5),
                 p=0.3,
             ),
+            A.RandomResizedCrop((256, 256), scale=(0.75, 1.0), ratio=(0.9, 1.1111111111111), p=0.5),
         ])
         
         timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
@@ -143,11 +144,11 @@ def main(cfg: DictConfig):
         trainer = Trainer(**cfg.trainer, logger=logger, callbacks=[LearningRateMonitor('step')])
         trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
         
-        best_thresh = find_best_threshold(model, val_loader, device='cuda')
+        best_thresh = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft)
         model.threshold = best_thresh
         model.mask_only = cfg.data.mask_only
 
-        plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only)
+        plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         test_metrics = trainer.test(model, dataloaders=test_loader)
         
         torch.cuda.empty_cache()

@@ -169,14 +169,23 @@ class PretrainedUNET(pl.LightningModule):
         
         total_steps = self.trainer.estimated_stepping_batches
         num_warmup_steps = int(0.05 * total_steps)
-        scheduler = get_cosine_with_min_lr_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, 
-                                                    num_training_steps=total_steps, min_lr=5e-6)
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-2, end_factor=1.0, total_iters=num_warmup_steps,
+        )
+        cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=total_steps - num_warmup_steps, eta_min=1e-6,
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[num_warmup_steps],
+        )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
-                "scheduler": scheduler, 
-                "interval": "step",    
-                "frequency": 1,         
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
             },
         }
     

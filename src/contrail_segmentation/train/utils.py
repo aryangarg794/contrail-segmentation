@@ -35,12 +35,15 @@ def dice_coef(y_true, y_pred, thr=0.5, epsilon=1e-7, pos_only=False):
 
 
 @torch.no_grad()
-def find_best_threshold(model, dataloader, num_vals=100, device='cuda'):
+def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=True):
     model.eval()
     all_preds = []
     all_targets = []
     for batch in dataloader:
-        imgs, target = batch
+        if soft:
+            imgs, target, _ = batch
+        else:
+            imgs, target = batch
         imgs.to(device=device)
         target.to(device=device)
         
