@@ -151,7 +151,7 @@ class PretrainedUNET(pl.LightningModule):
     
     def on_test_epoch_end(self):
         self.log('test/threshold', self.threshold, prog_bar=False, on_epoch=True, on_step=False)
-        fig, axes = plot_examples(self, idxs=TEST_IDXS, threshold=self.threshold, mask_only=self.mask_only)
+        fig, axes = plot_examples(self, idxs=TEST_IDXS, threshold=self.threshold_pos, mask_only=self.mask_only)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         buf.seek(0)
@@ -160,7 +160,7 @@ class PretrainedUNET(pl.LightningModule):
         self.logger.experiment.log({'Validation Examples (Opt threshold)': wandb.Image(img)})
         plt.close(fig)
 
-        fig, axes = plot_examples(self, idxs=TEST_IDXS, threshold=0.3, mask_only=self.mask_only)
+        fig, axes = plot_examples(self, idxs=TEST_IDXS, threshold=self.threshold_dice, mask_only=self.mask_only)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         buf.seek(0)

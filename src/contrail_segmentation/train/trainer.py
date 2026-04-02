@@ -52,7 +52,7 @@ def main(cfg: DictConfig):
         generator = torch.Generator().manual_seed(seed)
         
         train_transform = A.Compose([
-            A.RandomRotate90(p=0.4),
+            A.RandomRotate90(p=0.5),
             A.HorizontalFlip(p=0.25),
             A.VerticalFlip(p=0.25),
             A.Affine(
@@ -153,9 +153,22 @@ def main(cfg: DictConfig):
         model = instantiate(cfg.model)(cfg.data.soft)
         trainer = Trainer(**cfg.trainer, logger=logger, callbacks=callbacks)
         trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+        best_model_path = trainer.checkpoint_callback.best_model_path
+        if best_model_path:
+            print(f"Loading best weights into current model: {best_model_path}")
+            checkpoint = torch.load(best_model_path)
+            model.load_state_dict(checkpoint['state_dict'])
+            
+            model.to('cuda')
+            model.eval() 
+        else:
+            print("Warning: No best checkpoint found, using last weights.")
         
-        best_thresh = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=cfg.pos_only)
-        model.threshold = best_thresh
+        best_thresh_pos = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=True)
+        best_thresh_dice = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=False)
+        model.threshold_pos = best_thresh_pos
+        model.threshold_dice = best_thresh_dice
         model.mask_only = cfg.data.mask_only
 
         plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
@@ -174,6 +187,19 @@ def main(cfg: DictConfig):
     print("\nFinal Results across seeds:")
     for k, v in results.items():
         print(f"{k}: {v:.4f}")
+
+    results = {}
+    for key in all_seed_metrics[0].keys():
+        values = [m[key] for m in all_seed_metrics]
+        results[f"{key}_mean"] = float(np.mean(values))
+        results[f"{key}_std"] = float(np.std(values))
+    
+    os.makedirs("results", exist_ok=True)
+    base_name = f"{cfg.run_name}_{timestamp}"
+    
+    dill_path = os.path.join("results", f"{base_name}.dill")
+    with open(dill_path, 'wb') as f:
+        dill.dump(results, f)
         
     return results
 

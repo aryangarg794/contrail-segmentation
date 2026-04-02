@@ -44,8 +44,8 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=Tru
             imgs, target, _ = batch
         else:
             imgs, target = batch
-        imgs.to(device=device)
-        target.to(device=device)
+        imgs = imgs.to(device=device)
+        target = target.to(device=device)
         
         logits = model.model(imgs)
         all_preds.append(logits.detach().cpu())

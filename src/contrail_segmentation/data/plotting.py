@@ -44,7 +44,7 @@ def plot_train_examples(model: nn.Module, logger, train_loader, device: str = 'c
     
     for i, inp in enumerate(inputs):
         true_mask = outputs[i]
-        y_hat = model.model(inp.unsqueeze(0))
+        y_hat = model.model(inp.unsqueeze(0).to(device))
         inp = inp.permute(1, 2, 0).view(256, 256, 3, 8) if not mask_only else inp.permute(1, 2, 0)
         true_mask = true_mask.squeeze()
         axes[i, 0].imshow(true_mask)

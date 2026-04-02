@@ -4,3 +4,4 @@
 outputs/
 .venv
 /checkpoints
+/results
