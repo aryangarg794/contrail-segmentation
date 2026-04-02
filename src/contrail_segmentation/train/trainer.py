@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import WandbLogger 
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from torch.utils.data import DataLoader, Subset 
 
 from contrail_segmentation.data.dataset import ContrailDataset
@@ -40,6 +40,8 @@ def main(cfg: DictConfig):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
+    all_seed_metrics = []
+
     for seed in cfg.seeds:
         random.seed(seed)
         np.random.seed(seed)
@@ -50,17 +52,18 @@ def main(cfg: DictConfig):
         generator = torch.Generator().manual_seed(seed)
         
         train_transform = A.Compose([
-            A.RandomRotate90(p=0.5),
-            A.HorizontalFlip(p=0.25),
-            A.VerticalFlip(p=0.25),
+            A.RandomRotate90(p=0.3),
+            A.HorizontalFlip(p=0.1),
+            A.VerticalFlip(p=0.1),
             A.Affine(
                 scale=(0.9, 1.1),
                 rotate=(-15, 15),
                 translate_percent={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
                 shear=(-5, 5),
-                p=0.3,
+                p=0.5,
             ),
-            A.RandomResizedCrop((256, 256), scale=(0.75, 1.0), ratio=(0.9, 1.1111111111111), p=0.5),
+            A.GaussianBlur(p=0.3),
+            A.RandomBrightnessContrast(p=0.25)
         ])
         
         timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
@@ -140,8 +143,15 @@ def main(cfg: DictConfig):
             persistent_workers=True
         )
         
+        callbacks = [
+            LearningRateMonitor('step'),
+            EarlyStopping(monitor="val/dice", patience=30, mode="max"),
+            ModelCheckpoint(monitor="val/dice", mode="max", save_top_k=1, 
+                            filename=f"{cfg.run_name}_best-contrail",
+                            dirpath="checkpoints")
+        ]
         model = instantiate(cfg.model)(cfg.data.soft)
-        trainer = Trainer(**cfg.trainer, logger=logger, callbacks=[LearningRateMonitor('step')])
+        trainer = Trainer(**cfg.trainer, logger=logger, callbacks=callbacks)
         trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
         
         best_thresh = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft)
@@ -150,11 +160,22 @@ def main(cfg: DictConfig):
 
         plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         test_metrics = trainer.test(model, dataloaders=test_loader)
+        all_seed_metrics.append(test_metrics[0])
         
         torch.cuda.empty_cache()
         wandb.finish()
     
-    return test_metrics
+    results = {}
+    for key in all_seed_metrics[0].keys():
+        values = [m[key] for m in all_seed_metrics]
+        results[f"{key}_mean"] = np.mean(values)
+        results[f"{key}_std"] = np.std(values)
+    
+    print("\nFinal Results across seeds:")
+    for k, v in results.items():
+        print(f"{k}: {v:.4f}")
+        
+    return results
 
 if __name__ == "__main__":
     main()

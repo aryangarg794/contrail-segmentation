@@ -8,12 +8,12 @@ beta2: 0.999
 threshold: 0.3
 dice_weight: 0.5
 focal_weight: 0.5
-pos_weight: 1
+pos_weight: 100
 
 encoder_class:
   _partial_: true
   _target_: segmentation_models_pytorch.Unet
-  encoder_name: resnet50
+  encoder_name: resnet101
   encoder_weights: imagenet
   in_channels: 3
   classes: 1

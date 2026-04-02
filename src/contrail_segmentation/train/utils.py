@@ -35,7 +35,7 @@ def dice_coef(y_true, y_pred, thr=0.5, epsilon=1e-7, pos_only=False):
 
 
 @torch.no_grad()
-def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=True):
+def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=True, pos_only=False):
     model.eval()
     all_preds = []
     all_targets = []
@@ -69,7 +69,7 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=Tru
     thresholds = np.linspace(0, 1, num_vals)
     with progress_bar as p:
         for thr in thresholds:
-            dice = dice_coef(targets, preds, thr)
+            dice = dice_coef(targets, preds, thr, pos_only=pos_only)
             if dice > best:
                 best = dice
                 best_thr = thr
