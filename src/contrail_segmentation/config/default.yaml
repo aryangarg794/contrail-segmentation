@@ -10,3 +10,4 @@ seeds: [0]
 job_type: train
 device: cuda
 num_workers: 4
+pos_only: true

@@ -154,12 +154,12 @@ def main(cfg: DictConfig):
         trainer = Trainer(**cfg.trainer, logger=logger, callbacks=callbacks)
         trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
         
-        best_thresh = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft)
+        best_thresh = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=cfg.pos_only)
         model.threshold = best_thresh
         model.mask_only = cfg.data.mask_only
 
         plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
-        test_metrics = trainer.test(model, dataloaders=test_loader)
+        test_metrics = trainer.test(model, dataloaders=test_loader, ckpt_path="best")
         all_seed_metrics.append(test_metrics[0])
         
         torch.cuda.empty_cache()
