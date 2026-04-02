@@ -39,7 +39,9 @@ class ContrailDataset(Dataset):
         record_id = self.df_meta.loc[index]['record_id']
         img = get_ash_image(record_id, get_mask_only=self.mask_only).reshape(256, 256, -1).astype(np.float32)
         
-        target_soft = np.mean(get_mask_ind(record_id), axis=3)
+        label = get_mask_ind(record_id)
+        target_soft = np.clip((label * 2).sum(-1) / label.shape[-1], 0, 1)
+
         target = get_mask(record_id)
 
         if self.y_fix:

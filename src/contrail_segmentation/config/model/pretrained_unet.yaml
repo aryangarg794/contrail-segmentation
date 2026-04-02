@@ -2,18 +2,18 @@ _target_: contrail_segmentation.models.pretrained_unet.PretrainedUNET
 _partial_: true
 
 lr: 1e-4 
-wd: 1e-3
+wd: 1e-2
 beta1: 0.95
 beta2: 0.999
-threshold: 0.3
+threshold: 0.4
 dice_weight: 0.5
 focal_weight: 0.5
-pos_weight: 100
+pos_weight: 8
 
 encoder_class:
   _partial_: true
   _target_: segmentation_models_pytorch.Unet
-  encoder_name: resnet152
+  encoder_name: resnet34
   encoder_weights: imagenet
   in_channels: 3
   classes: 1

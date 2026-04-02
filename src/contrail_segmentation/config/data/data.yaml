@@ -2,4 +2,4 @@ batch_size: 16
 mask_only: true
 transform: true
 y_fix: true
-soft: true
+soft: false # DONT USE THE TRANSFORMATIONS DONT WORK

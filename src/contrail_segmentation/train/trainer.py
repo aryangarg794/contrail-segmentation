@@ -25,7 +25,7 @@ from contrail_segmentation.data.dataset import ContrailDataset
 from contrail_segmentation.models.pretrained_unet import PretrainedUNET
 from contrail_segmentation.models.unet import UNET
 from contrail_segmentation.train.utils import find_best_threshold
-from contrail_segmentation.data.plotting import plot_train_examples
+from contrail_segmentation.data.plotting import plot_train_examples, plot_test_examples
 from contrail_segmentation.data.utils import metadata
 
 import warnings
@@ -52,18 +52,20 @@ def main(cfg: DictConfig):
         generator = torch.Generator().manual_seed(seed)
         
         train_transform = A.Compose([
-            A.RandomRotate90(p=0.5),
-            A.HorizontalFlip(p=0.25),
-            A.VerticalFlip(p=0.25),
+            A.RandomRotate90(p=0.75),
+            A.OneOf([
+                A.HorizontalFlip(p=0.75),
+                A.VerticalFlip(p=0.75),
+            ]),
             A.Affine(
                 scale=(0.9, 1.1),
-                rotate=(-15, 15),
-                translate_percent={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
+                rotate=(-0, 0),
+                translate_percent={"x": (-0.0, 0.0), "y": (-0.0, 0.0)},
                 shear=(-5, 5),
                 p=0.5,
             ),
-            A.GaussNoise(p=0.1),
-            A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.15, p=0.1),
+            A.GaussianBlur(p=0.25),
+            A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.15, p=0.3),
         ], additional_targets={'pixel_mask': 'mask', 'soft_mask': 'mask'})
         
         timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
@@ -147,7 +149,7 @@ def main(cfg: DictConfig):
             LearningRateMonitor('step'),
             EarlyStopping(monitor="val/dice", patience=30, mode="max"),
             ModelCheckpoint(monitor="val/dice", mode="max", save_top_k=1, 
-                            filename=f"{cfg.run_name}_best-contrail",
+                            filename=f"{cfg.run_name}_best-contrail_seed{seed}",
                             dirpath="checkpoints")
         ]
         model = instantiate(cfg.model)(cfg.data.soft)
@@ -164,15 +166,16 @@ def main(cfg: DictConfig):
             model.eval() 
         else:
             print("Warning: No best checkpoint found, using last weights.")
+            model.to('cuda')
         
         best_thresh_pos = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=True)
         best_thresh_dice = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=False)
-        model.threshold_pos = best_thresh_pos
-        model.threshold_dice = best_thresh_dice
+        model.threshold = best_thresh_dice
         model.mask_only = cfg.data.mask_only
 
         plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         test_metrics = trainer.test(model, dataloaders=test_loader, ckpt_path="best")
+        plot_test_examples(model, logger, test_loader, threshold=best_thresh_pos, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         all_seed_metrics.append(test_metrics[0])
         
         torch.cuda.empty_cache()
