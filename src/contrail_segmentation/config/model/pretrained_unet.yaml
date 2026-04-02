@@ -13,7 +13,7 @@ pos_weight: 100
 encoder_class:
   _partial_: true
   _target_: segmentation_models_pytorch.Unet
-  encoder_name: resnet101
+  encoder_name: resnet152
   encoder_weights: imagenet
   in_channels: 3
   classes: 1

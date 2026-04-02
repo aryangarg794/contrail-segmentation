@@ -52,9 +52,9 @@ def main(cfg: DictConfig):
         generator = torch.Generator().manual_seed(seed)
         
         train_transform = A.Compose([
-            A.RandomRotate90(p=0.3),
-            A.HorizontalFlip(p=0.1),
-            A.VerticalFlip(p=0.1),
+            A.RandomRotate90(p=0.4),
+            A.HorizontalFlip(p=0.25),
+            A.VerticalFlip(p=0.25),
             A.Affine(
                 scale=(0.9, 1.1),
                 rotate=(-15, 15),
@@ -62,9 +62,9 @@ def main(cfg: DictConfig):
                 shear=(-5, 5),
                 p=0.5,
             ),
-            A.GaussianBlur(p=0.3),
-            A.RandomBrightnessContrast(p=0.25)
-        ])
+            A.GaussNoise(p=0.1),
+            A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.15, p=0.1),
+        ], additional_targets={'pixel_mask': 'mask', 'soft_mask': 'mask'})
         
         timestamp = datetime.now().strftime("%d_%b_%Y__%Hh%Mm")
         name = cfg.run_name + f'_seed{seed}_{timestamp}'

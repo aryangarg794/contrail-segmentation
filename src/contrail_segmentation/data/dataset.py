@@ -46,10 +46,10 @@ class ContrailDataset(Dataset):
             img = shift(img)
 
         if self.transform is not None:
-            augmented = self.transform(image=img, target=target, soft=target_soft)
+            augmented = self.transform(image=img, pixel_mask=target, soft_mask=target_soft)
             img = augmented["image"]
-            target = augmented["target"]
-            target_soft = augmented["soft"]
+            target = augmented["pixel_mask"]
+            target_soft = augmented["soft_mask"]
 
         img = torch.tensor(img).permute(2, 0, 1).float()
         target = torch.tensor(target).permute(2, 0, 1).float()

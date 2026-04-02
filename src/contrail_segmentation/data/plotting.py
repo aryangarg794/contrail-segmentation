@@ -19,7 +19,7 @@ def plot_train_examples(model: nn.Module, logger, train_loader, device: str = 'c
             imgs, targets, _ = batch
         else:
             imgs, targets = batch
-            
+
         for i in range(imgs.size(0)):
             has_contrail = targets[i].sum() > 0
             
@@ -67,7 +67,7 @@ def plot_train_examples(model: nn.Module, logger, train_loader, device: str = 'c
     plt.close(fig)
     
 
-def plot_examples(model: nn.Module, idxs: list, device: str = 'cuda', mask_only = False):
+def plot_examples(model: nn.Module, idxs: list, threshold: float, device: str = 'cuda', mask_only = False):
     inputs = [get_ash_image(metadata.loc[idx]['record_id'], get_mask_only=mask_only) for idx in idxs]
     fig, axes = plt.subplots(5, 4, figsize=(20, 10))
     sigmoid = nn.Sigmoid()
@@ -82,7 +82,7 @@ def plot_examples(model: nn.Module, idxs: list, device: str = 'cuda', mask_only 
         y_hat = model.model(torch_inp)
         y_hat = sigmoid(y_hat).view(256, 256).float().cpu()
         axes[i, 2].imshow(y_hat.numpy(), vmin=0, vmax=1)
-        axes[i, 3].imshow((y_hat > model.threshold).numpy())
+        axes[i, 3].imshow((y_hat > threshold).numpy())
         for j in range(4):
             axes[i, j].axis('off')
     
