@@ -676,7 +676,6 @@
             <!-- Labels -->
             <text x="4" y="12" font-size="7.5" fill="#3a5068">Input</text>
             <text x="215" y="12" font-size="7.5" fill="#3a5068">Output mask</text>
-            <text x="118" y="90" font-size="7" fill="rgba(255,157,77,0.6)">— skip connections</text>
 
             <!-- Output -->
             <rect x="260" y="20" width="22" height="80" rx="4" fill="rgba(0,229,255,0.1)" stroke="rgba(0,229,255,0.25)" stroke-width="1"/>
@@ -789,7 +788,7 @@
     </div>
 
     <!-- ── RIGHT COLUMN ── -->
-    <div class="col">
+    <!-- <div class="col">
 
       <div class="card">
         <div class="card-title"><span class="num">05</span> Experimental Results</div>
@@ -857,63 +856,21 @@
           </tbody>
         </table>
         <p style="font-size:10px;color:var(--muted);margin-top:5px">* Illustrative values — replace with your actual results</p>
-      </div>
+      </div> -->
 
-      <div class="card">
+      <!-- <div class="card">
         <div class="card-title"><span class="num">06</span> Few-Shot Performance</div>
         <p style="font-size:11.5px">Models trained with SR loss for 30 min on NVIDIA A10 G. Performance plateau reached surprisingly early:</p>
 
-        <!-- Inline mini chart -->
         <div style="margin-top:10px;background:rgba(6,11,22,0.6);border:1px solid var(--border);border-radius:7px;padding:12px 10px 6px;">
-          <svg width="100%" viewBox="0 0 260 90" xmlns="http://www.w3.org/2000/svg">
-            <!-- axes -->
-            <line x1="30" y1="10" x2="30" y2="75" stroke="rgba(79,195,247,0.2)" stroke-width="1"/>
-            <line x1="30" y1="75" x2="255" y2="75" stroke="rgba(79,195,247,0.2)" stroke-width="1"/>
-            <!-- y labels -->
-            <text x="26" y="14" font-size="7" fill="#3a5068" text-anchor="end">0.7</text>
-            <text x="26" y="35" font-size="7" fill="#3a5068" text-anchor="end">0.6</text>
-            <text x="26" y="55" font-size="7" fill="#3a5068" text-anchor="end">0.5</text>
-            <text x="26" y="75" font-size="7" fill="#3a5068" text-anchor="end">0.4</text>
-            <!-- x labels -->
-            <text x="45" y="83" font-size="7" fill="#3a5068" text-anchor="middle">100</text>
-            <text x="88" y="83" font-size="7" fill="#3a5068" text-anchor="middle">200</text>
-            <text x="131" y="83" font-size="7" fill="#3a5068" text-anchor="middle">400</text>
-            <text x="174" y="83" font-size="7" fill="#3a5068" text-anchor="middle">800</text>
-            <text x="217" y="83" font-size="7" fill="#3a5068" text-anchor="middle">1000</text>
-            <text x="248" y="83" font-size="7" fill="#3a5068" text-anchor="middle">Full</text>
-            <!-- few-shot line -->
-            <polyline points="45,60 88,48 131,30 174,28 217,27 248,25"
-              fill="none" stroke="rgba(79,195,247,0.5)" stroke-width="1.5" stroke-dasharray="4,2"/>
-            <!-- attention line -->
-            <polyline points="45,55 88,42 131,25 174,22 217,21 248,18"
-              fill="none" stroke="#69f0ae" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.7"/>
-            <!-- full model reference -->
-            <line x1="30" y1="25" x2="255" y2="25" stroke="rgba(0,229,255,0.25)" stroke-width="0.8" stroke-dasharray="2,3"/>
-            <!-- dots few-shot -->
-            <circle cx="45" cy="60" r="3" fill="rgba(79,195,247,0.8)"/>
-            <circle cx="88" cy="48" r="3" fill="rgba(79,195,247,0.8)"/>
-            <circle cx="131" cy="30" r="4" fill="rgba(79,195,247,1)" stroke="#00e5ff" stroke-width="1.5"/>
-            <circle cx="174" cy="28" r="3" fill="rgba(79,195,247,0.8)"/>
-            <circle cx="217" cy="27" r="3" fill="rgba(79,195,247,0.8)"/>
-            <circle cx="248" cy="25" r="3" fill="rgba(79,195,247,0.6)"/>
-            <!-- dots attn -->
-            <circle cx="131" cy="25" r="3.5" fill="#69f0ae" opacity="0.8"/>
-            <!-- key label -->
-            <text x="137" y="28" font-size="7" fill="#69f0ae" opacity="0.8">← Attn+SR</text>
-            <text x="137" y="36" font-size="7" fill="rgba(79,195,247,0.8)">← ResUNet+SR</text>
-            <!-- plateau annotation -->
-            <text x="125" y="18" font-size="7" fill="rgba(0,229,255,0.6)" text-anchor="middle">plateau</text>
-            <line x1="131" y1="20" x2="131" y2="28" stroke="rgba(0,229,255,0.3)" stroke-width="0.8"/>
-            <!-- x axis label -->
-            <text x="143" y="92" font-size="7.5" fill="#3a5068" text-anchor="middle">Training samples</text>
-          </svg>
+          
         </div>
         <div class="finding" style="margin-top:8px;font-size:11px">
           <strong>~400 samples</strong> is sufficient to match full-dataset performance. Attention U-Net reaches the same plateau faster, suggesting better feature utilization.
         </div>
-      </div>
+      </div> -->
 
-      <div class="card">
+      <!-- <div class="card">
         <div class="card-title"><span class="num">07</span> Conclusions</div>
         <p style="font-size:11.5px">Three takeaways from our extended study:</p>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
@@ -930,7 +887,7 @@
       </div>
 
     </div>
-  </div>
+  </div> -->
 
   <!-- ══ FOOTER ══ -->
   <footer>
