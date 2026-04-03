@@ -1,10 +1,7 @@
-# conf/config.yaml
-# Top-level Hydra config.  Override any value from the CLI:
-#   uv run train model=baseline_unet data.batch_size=8 trainer.max_epochs=500
-
 defaults:
   - model: baseline_unet
   - _self_
+  - wandb: wandb
 
 hydra:
   job:
