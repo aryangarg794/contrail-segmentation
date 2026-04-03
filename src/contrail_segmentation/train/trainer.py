@@ -56,15 +56,15 @@ def main(cfg: DictConfig):
             A.OneOf([
                 A.HorizontalFlip(p=0.75),
                 A.VerticalFlip(p=0.75),
-            ]),
+            ], p=0.5),
             A.Affine(
                 scale=(0.9, 1.1),
-                rotate=(-0, 0),
+                rotate=(-90, 90),
                 translate_percent={"x": (-0.0, 0.0), "y": (-0.0, 0.0)},
                 shear=(-5, 5),
                 p=0.5,
             ),
-            A.GaussianBlur(p=0.25),
+            A.GaussianBlur(sigma_limit=0.3, p=0.25),
             A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.15, p=0.3),
         ], additional_targets={'pixel_mask': 'mask', 'soft_mask': 'mask'})
         
