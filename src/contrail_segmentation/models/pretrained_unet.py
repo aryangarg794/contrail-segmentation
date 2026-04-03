@@ -1,200 +1,279 @@
-import io 
-import matplotlib.pyplot as plt
-import lightning as pl
-import segmentation_models_pytorch as smp
+"""
+PyTorch Lightning module for the baseline contrail segmentation model.
+
+Instantiated via Hydra using _target_ + _partial_ pattern:
+
+  encoder_class:
+    _partial_: True
+    _target_: segmentation_models_pytorch.Unet
+    encoder_name: resnet50
+    encoder_weights: ssl
+    in_channels: 24
+    classes: 1
+
+The encoder_class partial is called inside __init__ to build the full model,
+so all smp.Unet kwargs live in the YAML rather than this file.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
 import torch
 import torch.nn as nn
-import yaml
-import wandb
+import pytorch_lightning as pl
+from torchmetrics.functional import dice
 
-from PIL import Image
-from transformers import get_cosine_with_min_lr_schedule_with_warmup
-from contrail_segmentation.data.plotting import plot_examples
-from contrail_segmentation.data.utils import TEST_IDXS
-from contrail_segmentation.train.utils import dice_coef
-from contrail_segmentation.models.utils import compute_metrics
+
+class DiceLoss(nn.Module):
+    """Soft Dice loss for binary segmentation."""
+
+    def __init__(self, smooth: float = 1.0):
+        super().__init__()
+        self.smooth = smooth
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        probs  = torch.sigmoid(logits)
+        p_flat = probs.view(probs.size(0), -1)
+        t_flat = targets.view(targets.size(0), -1).float()
+
+        intersection = (p_flat * t_flat).sum(dim=1)
+        score = (2.0 * intersection + self.smooth) / (
+            p_flat.sum(dim=1) + t_flat.sum(dim=1) + self.smooth
+        )
+        return 1.0 - score.mean()
+
 
 class PretrainedUNET(pl.LightningModule):
-    
+    """
+    Baseline ResUNet lightning module.
+
+    Args:
+        encoder_class : A functools.partial (via Hydra _partial_: True) that,
+                        when called with no arguments, returns an smp.Unet model.
+        lr            : Adam learning rate.
+        wd            : Adam weight decay.
+        beta1         : Adam beta1.
+        beta2         : Adam beta2.
+        threshold     : Sigmoid threshold for binarising predictions at val time.
+        alpha         : Weight on Dice term in combined loss
+                        (1 - alpha) goes to BCE.
+    """
+
     def __init__(
-        self, 
-        soft: bool, 
-        encoder_class: nn.Module, 
-        threshold: float = 0.5, 
-        lr: float = 1e-3, 
-        wd: float = 1e-3, 
-        beta1: float = 0.9, 
-        beta2: float = 0.999, 
-        dice_weight: float = 0.5, 
-        focal_weight: float = 0.5,
-        bce_loss: nn.Module = nn.BCEWithLogitsLoss, 
-        dice_loss: nn.Module = smp.losses.DiceLoss,
-        pos_weight: int = 10, 
-        *args, 
-        **kwargs
+        self,
+        encoder_class: Callable[[], nn.Module],
+        lr:        float = 1e-3,
+        wd:        float = 1e-4,
+        beta1:     float = 0.9,
+        beta2:     float = 0.999,
+        threshold: float = 0.5,
+        alpha:     float = 0.5,
     ):
-        super().__init__(*args, **kwargs)
-    
-        self.lr = lr
-        self.wd = wd
-        self.betas = (beta1, beta2)
-        
+        super().__init__()
+        self.save_hyperparameters(ignore=["encoder_class"])
+
+        # Build the smp model from the partial
         self.model = encoder_class()
-        self.encoder_name = encoder_class.keywords.get("encoder_name")
-        self.encoder_weights = encoder_class.keywords.get("encoder_weights")
-        
-        self.threshold = threshold
-        self.soft = soft
-        
-        if isinstance(bce_loss, nn.BCEWithLogitsLoss):
-            pos_weight = torch.tensor([pos_weight])
-            self.bce_loss = bce_loss(pos_weight=pos_weight)
-        else: 
-            self.bce_loss = bce_loss()
 
-        self.dice_loss = dice_loss()
-        self.dice_weight = dice_weight
-        self.focal_weight = focal_weight
-        
-    def _loss(self, preds, targets, targets_soft=None):
-        if self.soft:
-            loss = self.dice_weight * self.dice_loss(preds, targets_soft) + \
-            self.focal_weight * self.bce_loss(preds, targets)  
-        else:
-            loss = self.dice_weight * self.dice_loss(preds, targets) + \
-            self.focal_weight * self.bce_loss(preds, targets)
-        return loss     
-        
-    def _forward_pass(self, batch):
-        if self.soft: 
-            imgs, targets, target_softs = batch
-        else:
-            imgs, targets = batch
-            target_softs = None
-        
-        y_hat = self.model(imgs)
-        loss = self._loss(y_hat, targets, target_softs)
-        dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
-        metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
-        metrics['dice'] = dice
-        
-        return loss, metrics
-    
+        self.dice_loss = DiceLoss()
+        self.bce_loss  = nn.BCEWithLogitsLoss()
+
+    # ------------------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------------------
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x)
+
+    # ------------------------------------------------------------------
+    # Loss
+    # ------------------------------------------------------------------
+
+    def _loss(self, logits: torch.Tensor, masks: torch.Tensor):
+        masks = masks.float()
+        l_dice = self.dice_loss(logits, masks)
+        l_bce  = self.bce_loss(logits, masks)
+        loss   = self.hparams.alpha * l_dice + (1.0 - self.hparams.alpha) * l_bce
+        return loss, l_dice, l_bce
+
+    # ------------------------------------------------------------------
+    # Steps
+    # ------------------------------------------------------------------
+
     def training_step(self, batch, batch_idx):
-        loss, metrics = self._forward_pass(batch)
-        
-        self.log(
-            'train/loss', 
-            loss, 
-            on_step=True, 
-            on_epoch=True, 
-            prog_bar=True
-        )
-        
-        
-        for metric, value in metrics.items():
-            
-            self.log(
-                f'train/{metric}', 
-                value, 
-                on_step=False, 
-                on_epoch=True, 
-                prog_bar=True if metric == 'dice' else False
-            )
-        
-    
-        return loss
-    
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, metrics = self._forward_pass(batch)
-        
-        self.log(
-            'val/loss', 
-            loss, 
-            on_step=True, 
-            on_epoch=True, 
-            prog_bar=True
-        )
-        
-        for metric, value in metrics.items():
-            self.log(
-                f'val/{metric}', 
-                value, 
-                on_step=False, 
-                on_epoch=True, 
-                prog_bar=True
-            )
-    
-        return loss 
-    
-    def test_step(self, batch, batch_idx):
-        loss, metrics = self._forward_pass(batch)
-        
-        self.log(
-            'test/loss', 
-            loss, 
-            on_step=False, 
-            on_epoch=True, 
-            prog_bar=False
-        )
-        
-        for metric, value in metrics.items():
-            self.log(
-                f'test/{metric}', 
-                value, 
-                on_step=False, 
-                on_epoch=True, 
-                prog_bar=True
-            )
-        
-        return loss 
-    
-    def on_test_epoch_end(self):
-        self.log('test/threshold', self.threshold, prog_bar=False, on_epoch=True, on_step=False)
-        fig, axes = plot_examples(self, idxs=TEST_IDXS, threshold=self.threshold_pos, mask_only=self.mask_only)
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        img = Image.open(buf)
-        
-        self.logger.experiment.log({'Validation Examples (Opt threshold)': wandb.Image(img)})
-        plt.close(fig)
+        images, masks = batch
+        logits = self(images)
+        loss, l_dice, l_bce = self._loss(logits, masks)
 
-        fig, axes = plot_examples(self, idxs=TEST_IDXS, threshold=self.threshold_dice, mask_only=self.mask_only)
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        img = Image.open(buf)
-        
-        self.logger.experiment.log({'Validation Examples (0.3 threshold)': wandb.Image(img)})
-        plt.close(fig)
-        
-    
+        self.log("train/loss",      loss,   on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/dice_loss", l_dice, on_step=False, on_epoch=True)
+        self.log("train/bce_loss",  l_bce,  on_step=False, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        images, masks = batch
+        logits = self(images)
+        loss, l_dice, l_bce = self._loss(logits, masks)
+
+        # Dice score (metric, not loss — higher is better)
+        preds      = (torch.sigmoid(logits) > self.hparams.threshold).long()
+        dice_score = dice(preds, masks.long(), ignore_index=0)
+
+        self.log("val/loss",       loss,       on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/dice_score", dice_score, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/dice_loss",  l_dice,     on_step=False, on_epoch=True)
+        self.log("val/bce_loss",   l_bce,      on_step=False, on_epoch=True)
+        return loss
+
+    # ------------------------------------------------------------------
+    # Optimiser
+    # ------------------------------------------------------------------
+
     def configure_optimizers(self):
-        
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr,
-                                     weight_decay=self.wd, 
-                                     betas=self.betas)
-        
-        total_steps = self.trainer.estimated_stepping_batches
-        num_warmup_steps = int(0.05 * total_steps)
-        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1e-2, end_factor=1.0, total_iters=num_warmup_steps,
+        optimizer = torch.optim.Adam(
+            self.parameters(),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.wd,
+            betas=(self.hparams.beta1, self.hparams.beta2),
         )
-        cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=total_steps - num_warmup_steps, eta_min=1e-7,
+        return optimizer"""
+PyTorch Lightning module for the baseline contrail segmentation model.
+
+Instantiated via Hydra using _target_ + _partial_ pattern:
+
+  encoder_class:
+    _partial_: True
+    _target_: segmentation_models_pytorch.Unet
+    encoder_name: resnet50
+    encoder_weights: ssl
+    in_channels: 24
+    classes: 1
+
+The encoder_class partial is called inside __init__ to build the full model,
+so all smp.Unet kwargs live in the YAML rather than this file.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+import torch
+import torch.nn as nn
+import pytorch_lightning as pl
+from torchmetrics.functional import dice
+
+
+class DiceLoss(nn.Module):
+    """Soft Dice loss for binary segmentation."""
+
+    def __init__(self, smooth: float = 1.0):
+        super().__init__()
+        self.smooth = smooth
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        probs  = torch.sigmoid(logits)
+        p_flat = probs.view(probs.size(0), -1)
+        t_flat = targets.view(targets.size(0), -1).float()
+
+        intersection = (p_flat * t_flat).sum(dim=1)
+        score = (2.0 * intersection + self.smooth) / (
+            p_flat.sum(dim=1) + t_flat.sum(dim=1) + self.smooth
         )
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer,
-            schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[num_warmup_steps],
+        return 1.0 - score.mean()
+
+
+class PretrainedUNET(pl.LightningModule):
+    """
+    Baseline ResUNet lightning module.
+
+    Args:
+        encoder_class : A functools.partial (via Hydra _partial_: True) that,
+                        when called with no arguments, returns an smp.Unet model.
+        lr            : Adam learning rate.
+        wd            : Adam weight decay.
+        beta1         : Adam beta1.
+        beta2         : Adam beta2.
+        threshold     : Sigmoid threshold for binarising predictions at val time.
+        alpha         : Weight on Dice term in combined loss
+                        (1 - alpha) goes to BCE.
+    """
+
+    def __init__(
+        self,
+        encoder_class: Callable[[], nn.Module],
+        lr:        float = 1e-3,
+        wd:        float = 1e-4,
+        beta1:     float = 0.9,
+        beta2:     float = 0.999,
+        threshold: float = 0.5,
+        alpha:     float = 0.5,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["encoder_class"])
+
+        # Build the smp model from the partial
+        self.model = encoder_class()
+
+        self.dice_loss = DiceLoss()
+        self.bce_loss  = nn.BCEWithLogitsLoss()
+
+    # ------------------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------------------
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x)
+
+    # ------------------------------------------------------------------
+    # Loss
+    # ------------------------------------------------------------------
+
+    def _loss(self, logits: torch.Tensor, masks: torch.Tensor):
+        masks = masks.float()
+        l_dice = self.dice_loss(logits, masks)
+        l_bce  = self.bce_loss(logits, masks)
+        loss   = self.hparams.alpha * l_dice + (1.0 - self.hparams.alpha) * l_bce
+        return loss, l_dice, l_bce
+
+    # ------------------------------------------------------------------
+    # Steps
+    # ------------------------------------------------------------------
+
+    def training_step(self, batch, batch_idx):
+        images, masks = batch
+        logits = self(images)
+        loss, l_dice, l_bce = self._loss(logits, masks)
+
+        self.log("train/loss",      loss,   on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/dice_loss", l_dice, on_step=False, on_epoch=True)
+        self.log("train/bce_loss",  l_bce,  on_step=False, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        images, masks = batch
+        logits = self(images)
+        loss, l_dice, l_bce = self._loss(logits, masks)
+
+        # Dice score (metric, not loss — higher is better)
+        preds      = (torch.sigmoid(logits) > self.hparams.threshold).long()
+        dice_score = dice(preds, masks.long(), ignore_index=0)
+
+        self.log("val/loss",       loss,       on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/dice_score", dice_score, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/dice_loss",  l_dice,     on_step=False, on_epoch=True)
+        self.log("val/bce_loss",   l_bce,      on_step=False, on_epoch=True)
+        return loss
+
+    # ------------------------------------------------------------------
+    # Optimiser
+    # ------------------------------------------------------------------
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.parameters(),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.wd,
+            betas=(self.hparams.beta1, self.hparams.beta2),
         )
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "step",
-                "frequency": 1,
-            },
-        }
-    
+        return optimizer

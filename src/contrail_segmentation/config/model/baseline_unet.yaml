@@ -1,0 +1,34 @@
+# conf/model/baseline_unet.yaml
+#
+# Baseline ResUNet model: ResNet-50 encoder + UNet decoder
+# Loss: alpha * Dice + (1 - alpha) * BCE
+#
+# Usage:
+#   uv run train model=baseline_unet
+#   uv run train model=baseline_unet model.lr=1e-4
+#   uv run train model=baseline_unet model.encoder_class.encoder_name=resnet34
+
+_target_: contrail_segmentation.models.pretrained_unet.PretrainedUNET
+
+# Optimiser
+lr:    1e-3
+wd:    1e-4
+beta1: 0.9
+beta2: 0.999
+
+# Inference threshold (sigmoid binarisation)
+threshold: 0.5
+
+# Loss weighting: alpha * Dice + (1 - alpha) * BCE
+alpha: 0.5
+
+# smp.Unet is constructed as a partial so all its kwargs stay in this file.
+# Change encoder_name, encoder_weights, or in_channels here without
+# touching any Python code.
+encoder_class:
+  _partial_: true
+  _target_: segmentation_models_pytorch.Unet
+  encoder_name:    resnet50
+  encoder_weights: imagenet   # or "ssl", "swsl", null
+  in_channels:     1          # 1-channel grayscale BTD image
+  classes:         1          # binary segmentation

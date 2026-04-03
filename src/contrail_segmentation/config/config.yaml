@@ -1,0 +1,23 @@
+# conf/config.yaml
+# Top-level Hydra config.  Override any value from the CLI:
+#   uv run train model=baseline_unet data.batch_size=8 trainer.max_epochs=500
+
+defaults:
+  - model: baseline_unet   # selects conf/model/baseline_unet.yaml
+  - _self_
+
+seed: 42
+
+data:
+  root_dir:    data                       # root containing train/ and validation/
+  metadata_csv: data/train_metadata.csv
+  batch_size:   16
+  num_workers:  4
+  time_step:    4                           # middle frame of the 8-frame sequence
+
+trainer:
+  max_epochs:       1000
+  accelerator:      auto                   # "gpu", "cpu", or "auto"
+  devices:          1
+  patience:         100                    # EarlyStopping patience (epochs)
+  log_every_n_steps: 10
