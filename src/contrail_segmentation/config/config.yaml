@@ -1,7 +1,6 @@
 defaults:
   - model: baseline_unet
   - _self_
-  - wandb: wandb
 
 hydra:
   job:
@@ -19,3 +18,7 @@ trainer:
   devices:           1
   patience:          100
   log_every_n_steps: 10
+
+logger:
+  project: contrail-segmentation
+  name: baseline_unet
