@@ -8,7 +8,9 @@ beta2: 0.999
 threshold: 0.4
 dice_weight: 0.5
 focal_weight: 0.5
+hough_weight: 0.333
 pos_weight: 1
+hough: false
 
 encoder_class:
   _partial_: true

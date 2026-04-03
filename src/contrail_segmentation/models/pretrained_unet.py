@@ -13,6 +13,7 @@ from contrail_segmentation.data.plotting import plot_examples
 from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
 from contrail_segmentation.models.utils import compute_metrics
+from contrail_segmentation.models.losses import SRLoss
 
 class PretrainedUNET(pl.LightningModule):
     
@@ -25,8 +26,10 @@ class PretrainedUNET(pl.LightningModule):
         wd: float = 1e-3, 
         beta1: float = 0.9, 
         beta2: float = 0.999, 
+        hough: bool = False, 
         dice_weight: float = 0.5, 
         focal_weight: float = 0.5,
+        hough_weight: float = 0.33, 
         bce_loss: nn.Module = nn.BCEWithLogitsLoss, 
         dice_loss: nn.Module = smp.losses.DiceLoss,
         pos_weight: int = 10, 
@@ -52,6 +55,11 @@ class PretrainedUNET(pl.LightningModule):
         else: 
             self.bce_loss = bce_loss()
 
+        if hough:
+            self.sr_loss = SRLoss()
+        self.hough = hough
+        self.hough_weight = hough_weight
+
         self.dice_loss = dice_loss()
         self.dice_weight = dice_weight
         self.focal_weight = focal_weight
@@ -63,6 +71,9 @@ class PretrainedUNET(pl.LightningModule):
         else:
             loss = self.dice_weight * self.dice_loss(preds, targets) + \
             self.focal_weight * self.bce_loss(preds, targets)
+
+        if self.hough:
+            loss += self.hough_weight * self.sr_loss(preds, targets)
         return loss     
         
     def _forward_pass(self, batch):
