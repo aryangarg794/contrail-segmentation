@@ -30,5 +30,5 @@ encoder_class:
   _target_: segmentation_models_pytorch.Unet
   encoder_name:    resnet50
   encoder_weights: imagenet   # or "ssl", "swsl", null
-  in_channels:     1          # 1-channel grayscale BTD image
+  in_channels:     24          # 1-channel grayscale BTD image
   classes:         1          # binary segmentation
