@@ -45,6 +45,12 @@ def main(cfg: DictConfig) -> None:
             verbose=True,
         ),
     ]
+    
+    logger = WandbLogger(
+        project=cfg.logger.project,
+        name=cfg.logger.name,
+    )
+
 
     trainer = pl.Trainer(
         max_epochs=cfg.trainer.max_epochs,
@@ -52,6 +58,7 @@ def main(cfg: DictConfig) -> None:
         devices=cfg.trainer.devices,
         callbacks=callbacks,
         log_every_n_steps=cfg.trainer.log_every_n_steps,
+        logger=logger,
     )
 
     trainer.fit(model, train_loader, val_loader)
