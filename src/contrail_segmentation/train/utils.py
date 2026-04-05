@@ -35,7 +35,7 @@ def dice_coef(y_true, y_pred, thr=0.5, epsilon=1e-7, pos_only=False):
 
 
 @torch.no_grad()
-def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=True, pos_only=False):
+def find_best_threshold(model, dataloader, masked=False, num_vals=100, device='cuda', soft=True, pos_only=False):
     model.eval()
     all_preds = []
     all_targets = []
@@ -47,7 +47,7 @@ def find_best_threshold(model, dataloader, num_vals=100, device='cuda', soft=Tru
         imgs = imgs.to(device=device)
         target = target.to(device=device)
         
-        logits = model.model(imgs)
+        logits = model(imgs) if masked else model.model(imgs)
         all_preds.append(logits.detach().cpu())
         all_targets.append(target.cpu())
         
