@@ -112,12 +112,14 @@ class MaskedUNET(pl.LightningModule):
             loss = self.dice_weight * self.dice_loss(preds, targets) + \
             self.focal_weight * self.bce_loss(preds, targets)
 
+        hough_loss = None
         if self.hough:
-            loss += self.hough_weight * self.sr_loss(preds, targets)
+            hough_loss = self.sr_loss(preds, targets)
+            loss = loss + self.hough_weight * hough_loss
 
         sparsity_loss = masks.squeeze(dim=-1).mean(dim=(1, 2)).mean()
         loss = loss + self.sparse_weight * sparsity_loss
-        return loss, sparsity_loss      
+        return loss, sparsity_loss, hough_loss      
     
     def forward(self, x, return_mask=False):
         mask = self.masker(x)
@@ -136,11 +138,13 @@ class MaskedUNET(pl.LightningModule):
         masks = self.masker(imgs)
         y_hat = self.model(imgs * masks)
         
-        loss, sparse_loss = self._loss(y_hat, targets, masks, target_softs)
+        loss, sparse_loss, hough_loss = self._loss(y_hat, targets, masks, target_softs)
         dice = dice_coef(targets, y_hat.detach(), thr=self.threshold)
         metrics = compute_metrics(y_hat.detach(), targets, thr=self.threshold)
         metrics['dice'] = dice
         metrics['sparse_loss'] = sparse_loss
+        if hough_loss:
+            metrics['hough_loss'] = hough_loss
         
         return loss, metrics
     
