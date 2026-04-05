@@ -4,8 +4,8 @@ _partial_: true
 lr: 1e-4 
 wd: 1e-2
 masker_channels: [32, 32]
-masker_kernel: 5
-sparse_weight: 0.1
+masker_kernel: 7
+sparse_weight: 0.01
 beta1: 0.95
 beta2: 0.999
 threshold: 0.4
@@ -17,7 +17,7 @@ hough: false
 encoder_class:
   _partial_: true
   _target_: segmentation_models_pytorch.Unet
-  encoder_name: resnet152
+  encoder_name: resnet50
   encoder_weights: imagenet
   in_channels: 3
   classes: 1
