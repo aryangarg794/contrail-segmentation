@@ -1,8 +1,11 @@
-_target_: contrail_segmentation.models.pretrained_unet.PretrainedUNET
+_target_: contrail_segmentation.models.masked_unet.MaskedUNET
 _partial_: true
 
 lr: 1e-4 
 wd: 1e-2
+masker_channels: [32, 32]
+masker_kernel: 7
+sparse_weight: 0.25
 beta1: 0.95
 beta2: 0.999
 threshold: 0.4

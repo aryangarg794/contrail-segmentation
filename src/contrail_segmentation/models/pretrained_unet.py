@@ -1,16 +1,8 @@
-import io 
-import matplotlib.pyplot as plt
 import lightning as pl
 import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
-import yaml
-import wandb
 
-from PIL import Image
-from transformers import get_cosine_with_min_lr_schedule_with_warmup
-from contrail_segmentation.data.plotting import plot_examples
-from contrail_segmentation.data.utils import TEST_IDXS
 from contrail_segmentation.train.utils import dice_coef
 from contrail_segmentation.models.utils import compute_metrics
 from contrail_segmentation.models.losses import SRLoss
@@ -29,7 +21,6 @@ class PretrainedUNET(pl.LightningModule):
         hough: bool = False, 
         dice_weight: float = 0.5, 
         focal_weight: float = 0.5,
-        hough_weight: float = 0.33, 
         bce_loss: nn.Module = nn.BCEWithLogitsLoss, 
         dice_loss: nn.Module = smp.losses.DiceLoss,
         pos_weight: int = 10, 
@@ -58,11 +49,15 @@ class PretrainedUNET(pl.LightningModule):
         if hough:
             self.sr_loss = SRLoss()
         self.hough = hough
-        self.hough_weight = hough_weight
-
+        self.hough_weight = 1/3
+        
         self.dice_loss = dice_loss()
-        self.dice_weight = dice_weight
-        self.focal_weight = focal_weight
+        if hough:
+            self.dice_weight = 1/3
+            self.focal_weight = 1/3
+        else:
+            self.dice_weight = dice_weight
+            self.focal_weight = focal_weight
         
     def _loss(self, preds, targets, targets_soft=None):
         if self.soft:

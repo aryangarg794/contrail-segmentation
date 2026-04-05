@@ -22,8 +22,7 @@ from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, Mode
 from torch.utils.data import DataLoader, Subset 
 
 from contrail_segmentation.data.dataset import ContrailDataset
-from contrail_segmentation.models.pretrained_unet import PretrainedUNET
-from contrail_segmentation.models.unet import UNET
+from contrail_segmentation.models.masked_unet import MaskedUNET
 from contrail_segmentation.train.utils import find_best_threshold
 from contrail_segmentation.data.plotting import plot_train_examples, plot_test_examples
 from contrail_segmentation.data.utils import metadata
@@ -175,21 +174,17 @@ def main(cfg: DictConfig):
 
         plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         test_metrics = trainer.test(model, dataloaders=test_loader, ckpt_path="best")
-        plot_test_examples(model, logger, test_loader, threshold=best_thresh_pos, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
+        if isinstance(model, MaskedUNET):
+            mask = True
+        else: 
+            mask = False
+        plot_test_examples(model, logger, test_loader, threshold=best_thresh_pos, masked=mask, 
+                           mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         all_seed_metrics.append(test_metrics[0])
         
         torch.cuda.empty_cache()
         wandb.finish()
     
-    results = {}
-    for key in all_seed_metrics[0].keys():
-        values = [m[key] for m in all_seed_metrics]
-        results[f"{key}_mean"] = np.mean(values)
-        results[f"{key}_std"] = np.std(values)
-    
-    print("\nFinal Results across seeds:")
-    for k, v in results.items():
-        print(f"{k}: {v:.4f}")
 
     results = {}
     for key in all_seed_metrics[0].keys():
@@ -197,6 +192,10 @@ def main(cfg: DictConfig):
         results[f"{key}_mean"] = float(np.mean(values))
         results[f"{key}_std"] = float(np.std(values))
     
+    print("\nFinal Results across seeds:")
+    for k, v in results.items():
+        print(f"{k}: {v:.4f}")
+
     os.makedirs("results", exist_ok=True)
     base_name = f"{cfg.run_name}_{timestamp}"
     

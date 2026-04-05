@@ -161,8 +161,44 @@ def plot_examples(model, dataloader, threshold, soft=False, mask_only=True, devi
     plt.tight_layout()
     return fig, axes
 
-def plot_test_examples(model, logger, dataloader, threshold, mask_only=True, soft=False, device='cuda'):
-    fig, axes = plot_examples(model, dataloader, threshold=threshold, mask_only=mask_only, soft=soft)
+def plot_masked_examples(model, dataloader, threshold, soft=False, mask_only=True, device='cuda'):
+    samples = find_diverse_samples(model, dataloader, threshold, soft=soft, device=device)
+    num_samples = len(samples)
+    
+    fig, axes = plt.subplots(5, num_samples, figsize=(4 * num_samples, 14))
+    model.to(device).eval()
+    
+    row_titles = ["Normalized Ash", "Ground Truth", "Confidence (Heatmap)", "Masker Mask", f"Pred (T={threshold:.2f})"]
+    
+    for i, (img, mask, label) in enumerate(samples):
+        with torch.no_grad():
+            logits, masker_mask = model(img.unsqueeze(0).to(device), return_mask=True)
+            probs = torch.sigmoid(logits).squeeze().cpu().numpy()
+        
+        img_np = img.permute(1, 2, 0).cpu().numpy()
+        mask_np = mask.squeeze().cpu().numpy()
+        img_plot = (img_np - img_np.min()) / (img_np.max() - img_np.min() + 1e-7)
+    
+        axes[0, i].imshow(img_plot)
+        axes[0, i].set_title(label, fontsize=12, fontweight='bold')
+        
+        axes[1, i].imshow(mask_np, cmap='gray')
+        axes[2, i].imshow(probs, cmap='magma', vmin=0, vmax=1)
+        axes[3, i].imshow(masker_mask.cpu().numpy().squeeze(), cmap='magma', vmin=0, vmax=1)
+        axes[4, i].imshow(probs > threshold, cmap='gray')
+
+    for r, title in enumerate(row_titles):
+        axes[r, 0].set_ylabel(title, fontsize=14, fontweight='bold', labelpad=20)
+
+    for ax in axes.flatten():
+        ax.set_xticks([]); ax.set_yticks([])
+        
+    plt.tight_layout()
+    return fig, axes
+
+def plot_test_examples(model, logger, dataloader, threshold, masked=False, mask_only=True, soft=False, device='cuda'):
+    plot_func = plot_masked_examples if masked else plot_examples
+    fig, axes = plot_func(model, dataloader, threshold=threshold, mask_only=mask_only, soft=soft)
     buf = io.BytesIO()
     fig.savefig(buf, format='png')
     buf.seek(0)
