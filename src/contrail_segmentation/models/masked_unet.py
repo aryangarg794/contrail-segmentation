@@ -280,7 +280,7 @@ class MaskedUNET(pl.LightningModule):
             loss = loss + self.hough_weight * hough_loss
         
         clouds = self.plateau_cloud(targets).detach()
-        mask_loss = F.binary_cross_entropy_with_logits(masks, clouds)
+        mask_loss = 0.5 * F.binary_cross_entropy_with_logits(masks, clouds) + 0.5 * self.dice_loss(masks, clouds)
         loss = loss + self.sparse_weight * mask_loss
 
         return loss, mask_loss, hough_loss      
