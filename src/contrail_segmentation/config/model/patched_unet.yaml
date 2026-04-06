@@ -3,7 +3,7 @@ _partial_: true
 
 lr: 1e-4 
 wd: 1e-2
-sparse_weight: 0.5
+sparse_weight: 0.05
 beta1: 0.95
 beta2: 0.999
 threshold: 0.4
@@ -14,10 +14,10 @@ hough: false
 
 masker: 
   _partial_: true
-  _target_: contrail_segmentation.models.masked_unet.Masker
-  hidden_channels: [30, 60, 60]
-  kernel_sizes: [7, 5, 3, 3]
-  groups: [3, 1, 1]
+  _target_: contrail_segmentation.models.masked_unet.PatchMasker
+  hidden_channels: [32, 32, 32]
+  kernel_sizes: [3, 3, 3]
+  patch_size: 16
 
 encoder_class:
   _partial_: true

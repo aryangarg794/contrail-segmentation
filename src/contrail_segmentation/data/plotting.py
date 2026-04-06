@@ -8,7 +8,7 @@ import wandb
 from PIL import Image
 from contrail_segmentation.data.utils import get_mask, fake_color_img, metadata, get_ash_image
 
-def plot_train_examples(model: nn.Module, logger, train_loader, device: str = 'cuda', num_values: int = 5,
+def plot_train_examples(model: nn.Module, logger, train_loader, masked=False, device: str = 'cuda', num_values: int = 5,
                         mask_only: bool = False, soft: bool = False):
     inputs = []
     outputs = []
@@ -44,7 +44,7 @@ def plot_train_examples(model: nn.Module, logger, train_loader, device: str = 'c
     
     for i, inp in enumerate(inputs):
         true_mask = outputs[i]
-        y_hat = model.model(inp.unsqueeze(0).to(device))
+        y_hat = model(inp.unsqueeze(0).to(device)) if masked else model.model(inp.unsqueeze(0).to(device))
         inp = inp.permute(1, 2, 0).view(256, 256, 3, 8) if not mask_only else inp.permute(1, 2, 0)
         true_mask = true_mask.squeeze()
         axes[i, 0].imshow(true_mask)
@@ -184,7 +184,7 @@ def plot_masked_examples(model, dataloader, threshold, soft=False, mask_only=Tru
         
         axes[1, i].imshow(mask_np, cmap='gray')
         axes[2, i].imshow(probs, cmap='magma', vmin=0, vmax=1)
-        axes[3, i].imshow(masker_mask.cpu().numpy().squeeze(), cmap='magma', vmin=0, vmax=1)
+        axes[3, i].imshow(masker_mask.cpu().numpy().squeeze(), cmap='gray')
         axes[4, i].imshow(probs > threshold, cmap='gray')
 
     for r, title in enumerate(row_titles):

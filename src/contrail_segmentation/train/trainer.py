@@ -146,7 +146,6 @@ def main(cfg: DictConfig):
         
         callbacks = [
             LearningRateMonitor('step'),
-            EarlyStopping(monitor="val/dice", patience=30, mode="max"),
             ModelCheckpoint(monitor="val/dice", mode="max", save_top_k=1, 
                             filename=f"{cfg.run_name}_best-contrail_seed{seed}",
                             dirpath="checkpoints")
@@ -158,7 +157,7 @@ def main(cfg: DictConfig):
         best_model_path = trainer.checkpoint_callback.best_model_path
         if best_model_path:
             print(f"Loading best weights into current model: {best_model_path}")
-            checkpoint = torch.load(best_model_path)
+            checkpoint = torch.load(best_model_path, weights_only=False)
             model.load_state_dict(checkpoint['state_dict'])
             
             model.to('cuda')
@@ -166,18 +165,20 @@ def main(cfg: DictConfig):
         else:
             print("Warning: No best checkpoint found, using last weights.")
             model.to('cuda')
-        
-        best_thresh_pos = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=True)
-        best_thresh_dice = find_best_threshold(model, val_loader, device='cuda', soft=cfg.data.soft, pos_only=False)
-        model.threshold = best_thresh_dice
-        model.mask_only = cfg.data.mask_only
 
-        plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
-        test_metrics = trainer.test(model, dataloaders=test_loader, ckpt_path="best")
         if isinstance(model, MaskedUNET):
             mask = True
         else: 
             mask = False
+        
+        best_thresh_pos = find_best_threshold(model, val_loader, masked=mask, device='cuda', soft=cfg.data.soft, pos_only=True)
+        best_thresh_dice = find_best_threshold(model, val_loader, masked=mask, device='cuda', soft=cfg.data.soft, pos_only=False)
+        model.threshold = best_thresh_dice
+        model.mask_only = cfg.data.mask_only
+
+        plot_train_examples(model, logger, train_loader, mask_only=cfg.data.mask_only, soft=cfg.data.soft)
+        test_metrics = trainer.test(model, dataloaders=test_loader, ckpt_path="best", weights_only=False)
+        
         plot_test_examples(model, logger, test_loader, threshold=best_thresh_pos, masked=mask, 
                            mask_only=cfg.data.mask_only, soft=cfg.data.soft)
         all_seed_metrics.append(test_metrics[0])

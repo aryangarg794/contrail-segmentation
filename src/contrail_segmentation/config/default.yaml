@@ -6,7 +6,7 @@ defaults:
 - _self_
 
 run_name: pretrained_unet_fake_rgb
-seeds: [0, 1, 2]
+seeds: [0]
 job_type: train
 device: cuda
 num_workers: 4

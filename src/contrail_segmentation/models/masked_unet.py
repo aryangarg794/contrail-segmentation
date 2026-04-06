@@ -3,49 +3,189 @@ import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math 
+
+from torchvision.transforms.functional import gaussian_blur
 
 from contrail_segmentation.train.utils import dice_coef
 from contrail_segmentation.models.utils import compute_metrics
 from contrail_segmentation.models.losses import SRLoss
 
-class Masker(nn.Module):
+# class PatchMasker(nn.Module):
+#     def __init__(
+#         self, 
+#         input_dim: int = 3, 
+#         patch_size: int = 16, 
+#         hidden_channels: list = [32, 64],
+#         kernel_sizes: list = [3, 3],
+#         tau: float = 1.0,
+#         *args, 
+#         **kwargs
+#     ):
+#         super().__init__()
+#         self.P = patch_size
+#         self.tau = tau
+        
+#         assert len(hidden_channels) == len(kernel_sizes)
+        
+#         self.patch_net = nn.Sequential()
+#         self.patch_net.append(nn.Conv2d(input_dim, hidden_channels[0], kernel_size=kernel_sizes[0], padding='same'))
+#         self.patch_net.append(nn.ReLU())
+        
+#         for i in range(len(hidden_channels) - 1):
+#             self.patch_net.append(nn.Conv2d(hidden_channels[i], hidden_channels[i+1], kernel_size=kernel_sizes[i+1], padding='same'))
+#             self.patch_net.append(nn.ReLU())
 
+#         self.patch_net.append(nn.AdaptiveAvgPool2d(1))
+#         self.patch_net.append(nn.Flatten())
+#         self.patch_net.append(nn.Linear(hidden_channels[-1], 2))
+
+#     def forward(self, x: torch.Tensor):
+#         B, C, H, W = x.shape
+#         patches = x.unfold(2, self.P, self.P).unfold(3, self.P, self.P)
+#         B, C, nH, nW, P, P = patches.shape
+#         patches = patches.permute(0, 2, 3, 1, 4, 5).reshape(-1, C, P, P)
+        
+#         logits = self.patch_net(patches)
+#         gumbel_out = F.gumbel_softmax(logits, tau=self.tau, hard=True, dim=-1)
+#         patch_probs = gumbel_out[:, 1]
+        
+#         mask_small = patch_probs.view(B, 1, nH, nW)
+#         mask_full = mask_small.repeat_interleave(self.P, dim=2).repeat_interleave(self.P, dim=3)
+#         return mask_full
+
+# class Masker(nn.Module):
+#     def __init__(
+#             self, 
+#             input_dim: int = 3, 
+#             kernel_sizes: list = [15, 7, 11], 
+#             groups: list = [1, 1],
+#             hidden_channels: list = [32, 64],
+#             tau: float = 1.0,
+#             *args, 
+#             **kwargs
+#         ):
+#         super().__init__(*args, **kwargs)
+#         self.tau = tau
+#         self.layers = nn.Sequential()
+        
+#         self.layers.append(nn.Conv2d(input_dim, hidden_channels[0], kernel_size=kernel_sizes[0], padding='same', groups=groups[0]))
+#         self.layers.append(nn.ReLU())
+        
+#         for i in range(len(hidden_channels) - 1):
+#             self.layers.append(nn.Conv2d(hidden_channels[i], hidden_channels[i+1], kernel_size=kernel_sizes[i+1], padding='same', groups=groups[i+1]))
+#             self.layers.append(nn.ReLU())
+
+#         self.layers.append(nn.Conv2d(hidden_channels[-1], 2, kernel_size=kernel_sizes[-1], padding='same'))
+
+#     def forward(self, x: torch.Tensor):
+#         logits = self.layers(x)
+#         logits = logits.permute(0, 2, 3, 1)
+#         gumbel_out = F.gumbel_softmax(logits, tau=self.tau, hard=True, dim=-1)
+#         mask = gumbel_out[..., 1].unsqueeze(1)
+#         return mask
+class PatchMasker(nn.Module):
+    def __init__(
+        self, 
+        input_dim: int = 3, 
+        patch_size: int = 16, 
+        hidden_channels: list = [32, 64],
+        kernel_sizes: list = [3, 3],
+        *args, 
+        **kwargs
+    ):
+        super().__init__()
+        self.P = patch_size
+        
+        assert len(hidden_channels) == len(kernel_sizes)
+        
+        self.patch_net = nn.Sequential()
+        
+        self.patch_net.append(nn.Conv2d(
+            input_dim, 
+            hidden_channels[0], 
+            kernel_size=kernel_sizes[0],
+            padding='same'
+        ))
+        self.patch_net.append(nn.ReLU())
+        
+        for i in range(len(hidden_channels) - 1):
+            self.patch_net.append(nn.Conv2d(
+                hidden_channels[i], 
+                hidden_channels[i+1], 
+                kernel_size=kernel_sizes[i+1],
+                padding='same'
+            ))
+            self.patch_net.append(nn.ReLU())
+
+        self.patch_net.append(nn.AdaptiveAvgPool2d(1))
+        self.patch_net.append(nn.Flatten())
+        self.patch_net.append(nn.Linear(hidden_channels[-1], 1))
+
+    def forward(self, x: torch.Tensor):
+        B, C, H, W = x.shape
+        
+        patches = x.unfold(2, self.P, self.P).unfold(3, self.P, self.P)
+        B, C, nH, nW, P, P = patches.shape
+        
+        patches = patches.permute(0, 2, 3, 1, 4, 5).reshape(-1, C, P, P)
+        
+        patch_probs = torch.sigmoid(self.patch_net(patches)) 
+        
+        mask_small = patch_probs.view(B, 1, nH, nW)
+        mask_full = mask_small.repeat_interleave(self.P, dim=2).repeat_interleave(self.P, dim=3)
+        
+        return mask_full
+
+class Masker(nn.Module):
     def __init__(
             self, 
             input_dim: int = 3, 
-            kernel_size: int = 7, 
-            hidden_channels: list = list([32, 64]),
+            kernel_sizes: list = list([15, 7, 11]), 
+            groups: list = [1, 1],
+            hidden_channels: list = [32, 64],
             *args, 
             **kwargs
         ):
         super().__init__(*args, **kwargs)
-
+        assert len(groups) == len(hidden_channels), "Groups list must match hidden_channels length"
+ 
         self.layers = nn.Sequential()
-        self.layers.extend([nn.Conv2d(
+        
+        self.layers.append(nn.Conv2d(
             input_dim, 
             hidden_channels[0], 
-            kernel_size=kernel_size,
-            padding='same'
-        ), nn.ReLU()])
+            kernel_size=kernel_sizes[0],
+            padding='same',
+            groups=groups[0], 
+        ))
+        self.layers.append(nn.ReLU())
         
-        for dim1, dim2 in zip(hidden_channels[:-1], hidden_channels[1:]):
-            self.layers.extend([nn.Conv2d(
+        for i in range(len(hidden_channels) - 1):
+            dim1 = hidden_channels[i]
+            dim2 = hidden_channels[i+1]
+            current_group = groups[i+1]
+            kernel_size = kernel_sizes[i+1] 
+            
+            self.layers.append(nn.Conv2d(
                 dim1, 
                 dim2, 
                 kernel_size=kernel_size,
-                padding='same'
-            ), nn.ReLU()])
+                padding='same',
+                groups=current_group,
+            ))
+            self.layers.append(nn.ReLU())
 
         self.layers.append(nn.Conv2d(
             hidden_channels[-1], 
             1,
-            kernel_size=kernel_size, 
+            kernel_size=kernel_sizes[-1], 
             padding='same'
         ))
 
-
     def forward(self, x: torch.Tensor):
-        return F.sigmoid(self.layers(x))
+        out = self.layers(x)
+        return out
 
 class MaskedUNET(pl.LightningModule):
     
@@ -54,8 +194,7 @@ class MaskedUNET(pl.LightningModule):
         soft: bool, 
         encoder_class: nn.Module, 
         threshold: float = 0.5, 
-        masker_kernel: int = 7, 
-        masker_channels: list = list([32, 64]), 
+        masker: nn.Module = Masker, 
         lr: float = 1e-3, 
         wd: float = 1e-3, 
         beta1: float = 0.9, 
@@ -71,13 +210,14 @@ class MaskedUNET(pl.LightningModule):
         **kwargs
     ):
         super().__init__(*args, **kwargs)
+        self.save_hyperparameters()
     
         self.lr = lr
         self.wd = wd
         self.betas = (beta1, beta2)
         
         self.model = encoder_class()
-        self.masker = Masker(kernel_size=masker_kernel, hidden_channels=masker_channels)
+        self.masker = masker()
         self.encoder_name = encoder_class.keywords.get("encoder_name")
         self.encoder_weights = encoder_class.keywords.get("encoder_weights")
         
@@ -104,6 +244,28 @@ class MaskedUNET(pl.LightningModule):
             self.focal_weight = focal_weight
         self.sparse_weight = sparse_weight
         
+    def entropy_loss(self, mask, eps=1e-8):
+        entropy = -(mask * torch.log(mask + eps) + (1 - mask) * torch.log(1 - mask + eps))
+        return entropy.mean()
+    
+    def plateau_cloud(self, mask, dilation_size=35, blur_sigma=15):
+        if mask.ndim == 3:
+            mask = mask.unsqueeze(1)
+            
+        padding = dilation_size // 2
+        thick_mask = F.max_pool2d(mask.float(), kernel_size=dilation_size, stride=1, padding=padding)
+        
+        k_size = int(math.ceil(4 * blur_sigma)) | 1 
+        soft_targets = gaussian_blur(thick_mask, [k_size, k_size], sigma=[blur_sigma, blur_sigma])
+        
+        view_shape = soft_targets.shape
+        flat_targets = soft_targets.view(view_shape[0], -1)
+        max_per_sample = flat_targets.max(dim=1, keepdim=True)[0]
+        
+        soft_targets = flat_targets / (max_per_sample + 1e-8)
+        
+        return soft_targets.view(view_shape) 
+
     def _loss(self, preds, targets, masks, targets_soft=None):
         if self.soft:
             loss = self.dice_weight * self.dice_loss(preds, targets_soft) + \
@@ -116,13 +278,16 @@ class MaskedUNET(pl.LightningModule):
         if self.hough:
             hough_loss = self.sr_loss(preds, targets)
             loss = loss + self.hough_weight * hough_loss
+        
+        clouds = self.plateau_cloud(targets).detach()
+        mask_loss = F.binary_cross_entropy_with_logits(masks, clouds)
+        loss = loss + self.sparse_weight * mask_loss
 
-        sparsity_loss = masks.squeeze(dim=-1).mean(dim=(1, 2)).mean()
-        loss = loss + self.sparse_weight * sparsity_loss
-        return loss, sparsity_loss, hough_loss      
+        return loss, mask_loss, hough_loss      
     
     def forward(self, x, return_mask=False):
-        mask = self.masker(x)
+        mask, _ = self.masker(x)
+        mask = F.sigmoid(mask)
         if return_mask:
             return self.model(x * mask), mask
         else: 
@@ -136,6 +301,7 @@ class MaskedUNET(pl.LightningModule):
             target_softs = None
 
         masks = self.masker(imgs)
+        masks = F.sigmoid(masks)
         y_hat = self.model(imgs * masks)
         
         loss, sparse_loss, hough_loss = self._loss(y_hat, targets, masks, target_softs)
