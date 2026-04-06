@@ -286,7 +286,7 @@ class MaskedUNET(pl.LightningModule):
         return loss, mask_loss, hough_loss      
     
     def forward(self, x, return_mask=False):
-        mask, _ = self.masker(x)
+        mask = self.masker(x)
         mask = F.sigmoid(mask)
         if return_mask:
             return self.model(x * mask), mask
