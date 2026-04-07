@@ -1,20 +1,3 @@
-"""
-PyTorch Lightning module for the baseline contrail segmentation model.
-
-Instantiated via Hydra using _target_ + _partial_ pattern:
-
-  encoder_class:
-    _partial_: True
-    _target_: segmentation_models_pytorch.Unet
-    encoder_name: resnet50
-    encoder_weights: ssl
-    in_channels: 24
-    classes: 1
-
-The encoder_class partial is called inside __init__ to build the full model,
-so all smp.Unet kwargs live in the YAML rather than this file.
-"""
-
 from __future__ import annotations
 
 from typing import Callable
@@ -45,20 +28,8 @@ class DiceLoss(nn.Module):
 
 
 class PretrainedUNET(pl.LightningModule):
-    """
-    Baseline ResUNet lightning module.
-
-    Args:
-        encoder_class : A functools.partial (via Hydra _partial_: True) that,
-                        when called with no arguments, returns an smp.Unet model.
-        lr            : Adam learning rate.
-        wd            : Adam weight decay.
-        beta1         : Adam beta1.
-        beta2         : Adam beta2.
-        threshold     : Sigmoid threshold for binarising predictions at val time.
-        alpha         : Weight on Dice term in combined loss
-                        (1 - alpha) goes to BCE.
-    """
+   
+    //Baseline ResUNet lightning module
 
     def __init__(
         self,
@@ -79,16 +50,8 @@ class PretrainedUNET(pl.LightningModule):
         self.dice_loss = DiceLoss()
         self.bce_loss  = nn.BCEWithLogitsLoss()
 
-    # ------------------------------------------------------------------
-    # Forward
-    # ------------------------------------------------------------------
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
-
-    # ------------------------------------------------------------------
-    # Loss
-    # ------------------------------------------------------------------
 
     def _loss(self, logits: torch.Tensor, masks: torch.Tensor):
         masks = masks.float()
@@ -96,10 +59,6 @@ class PretrainedUNET(pl.LightningModule):
         l_bce  = self.bce_loss(logits, masks)
         loss   = self.hparams.alpha * l_dice + (1.0 - self.hparams.alpha) * l_bce
         return loss, l_dice, l_bce
-
-    # ------------------------------------------------------------------
-    # Steps
-    # ------------------------------------------------------------------
 
     def training_step(self, batch, batch_idx):
         images, masks = batch
@@ -125,10 +84,6 @@ class PretrainedUNET(pl.LightningModule):
         self.log("val/dice_loss",  l_dice,     on_step=False, on_epoch=True)
         self.log("val/bce_loss",   l_bce,      on_step=False, on_epoch=True)
         return loss
-
-    # ------------------------------------------------------------------
-    # Optimiser
-    # ------------------------------------------------------------------
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -184,21 +139,6 @@ class DiceLoss(nn.Module):
 
 
 class PretrainedUNET(pl.LightningModule):
-    """
-    Baseline ResUNet lightning module.
-
-    Args:
-        encoder_class : A functools.partial (via Hydra _partial_: True) that,
-                        when called with no arguments, returns an smp.Unet model.
-        lr            : Adam learning rate.
-        wd            : Adam weight decay.
-        beta1         : Adam beta1.
-        beta2         : Adam beta2.
-        threshold     : Sigmoid threshold for binarising predictions at val time.
-        alpha         : Weight on Dice term in combined loss
-                        (1 - alpha) goes to BCE.
-    """
-
     def __init__(
         self,
         encoder_class: Callable[[], nn.Module],
@@ -218,27 +158,15 @@ class PretrainedUNET(pl.LightningModule):
         self.dice_loss = DiceLoss()
         self.bce_loss  = nn.BCEWithLogitsLoss()
 
-    # ------------------------------------------------------------------
-    # Forward
-    # ------------------------------------------------------------------
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
-
-    # ------------------------------------------------------------------
-    # Loss
-    # ------------------------------------------------------------------
-
+      
     def _loss(self, logits: torch.Tensor, masks: torch.Tensor):
         masks = masks.float()
         l_dice = self.dice_loss(logits, masks)
         l_bce  = self.bce_loss(logits, masks)
         loss   = self.hparams.alpha * l_dice + (1.0 - self.hparams.alpha) * l_bce
         return loss, l_dice, l_bce
-
-    # ------------------------------------------------------------------
-    # Steps
-    # ------------------------------------------------------------------
 
     def training_step(self, batch, batch_idx):
         images, masks = batch
@@ -264,10 +192,6 @@ class PretrainedUNET(pl.LightningModule):
         self.log("val/dice_loss",  l_dice,     on_step=False, on_epoch=True)
         self.log("val/bce_loss",   l_bce,      on_step=False, on_epoch=True)
         return loss
-
-    # ------------------------------------------------------------------
-    # Optimiser
-    # ------------------------------------------------------------------
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
